@@ -21,8 +21,11 @@ To verify that it is identical to the original, you can verify these checksum by
 
 Addr   Data
 $7FF4  $5C
+
 $7FF5  $A7
+
 $7FF6  $1F
+
 $7FF7  $98
 
 # Files in this repo
