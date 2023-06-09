@@ -20,6 +20,7 @@ I strongly recommend referencing https://archive.org/details/MicronXCeedTechDocs
 To verify that it is identical to the original, you can verify these checksum bytes.
 
 Addr   Data
+
 $7FF4  $5C
 
 $7FF5  $A7
