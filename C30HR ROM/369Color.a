@@ -1,1 +1,2578 @@
-		GBLA	&DriverOnChip&DriverOnChip	SETA	1;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~;369Color.a;DESCRIPTION:;	This is the driver file for video board 369 XCEED SE/306-48.;	Code Name: Bart;	Product Name: Micron XCEED Color 30ª;MAKEINFO:;	Run BinHex, choose "Application->Upload" on the 369Color.d file ~;	and name the file 369Color.text.;		asm 369Color.a;		link 369Color.a.o -ss 64400 -o 369Color.crc;		crcPatch 369Color.crc;		Data 369Color.crc 369Color.d;VERSION:;	Version 1.2	August 22, 1990	Laura Lorraine Shaffer Mills;	Version 1.3a3	January 2, 1991 Tom Stamm;	Copyright Micron Technology, Inc. 1990/1991.;	All Rights Reserved.;HISTORY:;	A0.2	cb	(02/06/88) changed _DoVBLTask to indirect jump thru jVBLTask.;	A0.3	cb	Indexed SetEntries/GetEntries Fixed.;	A0.4	cb	Fixed Gamma and Grayscreen.;	080089	cb	Created.;	061590	llsm	Changed version number from 1.0 to 1.1 (PageMaker fix). ;	082290	llsm	Changed Rev. 1.1 to 1.2; ROM revision from 1 to 2.;	120390	ts	Change Rev. 1.2 to 1.3a1; Add changes for Maverick Chip.  ~;			Change the start address offset for each screen depth.;	121290	ts	Put in register transformations for Maverick.;	121390	ts	Put in new register transformations for Maverick.;	121490	ts	Add logic in primary init and add seconadary init ~;			for the smiley mac.;	121890	ts	Add resources for Virtual Video.;	010291	ts	Set the offset to the next row down for virtual ~;			video.;	011591	ts	Add resourses for VGA, Portrait and Bartlett;	062091	ts	Add new portrait numbers for Maverick.;	112591	llsm	Changed board number 281 to 369.  Added Hungarian notation.;	112691	llsm	Changed ROM revision level from 2 to 3; made constant in ~;			the include file.;	112791	llsm	Put the clock into the External register.;	010292	llsm	Changed from 64K to 256K ROM.;	011492	llsm	Change from Maverick to Gambler, with G300 bit (in ModesA ~;			register) inverted.;	011692	llsm	The Debug Select bits in ModesB register changed from ~;			3 to 0.;	052793	rb	The start of the HR series after 2 months of;			of work. Isn't life grand??;			Check seperate notebook for changes.;NOTES:;	1.	Released original revision 1.;		June 15, 1990 Released revision 1 (PageMaker).;		August 22, 1990 Released revision 2 (SetInterrupt).;;	2.	HARDWARE/SOFTWARE INTERFACE INFORMATION;;	MODE REGISTER is at address sE0000 (write-only);	bits 24:25	set 1, 2, 4, or 8 bit mode (values 0, 1, 2, 3 respectively);	bit  26		1 enables interrupts, 0 disables interrupts;	bit  27		1 clears interrupts disregarding bits 0:2;			0 clears interrupts and uses information in bits 0:2;;	CLUT WRITE ADDRESS REGISTER is at address sC0000 (write-only);	bits 0:7	set the starting CLUT entry to write (0-255);			subsequent writes to the CLUT DATA REGISTER set the RGB component;			values in the CLUT table starting at the entry specified.;;	CLUT READ ADDRESS REGISTER is at address sC000C write-only);	bits 0:7	set the starting CLUT entry to read from (0-255);			subsequent reads of the CLUT DATA REGISTER get the RGB component;			values in the CLUT table starting at the entry specified.;;	CLUT DATA REGISTER is at address sC0004 (read/write);	bits 0:7	contain the RGB component data.  The first read/write acts on the;			red component, followed by the green and then the blue.;			Subsequent accesses get/set data for the next CLUT entry, etc.;;	CLUT ADDRESS MASK REGISTER is at address sC0008 (write-only);	bits 0:7	select the address lines valid for the current mode selection;			use $01, $03, $0F, $FF for 1, 2, 4, and 8 bit modes respectively;;	3.	To use the 32K ROM, put this code in the last 1/4 or the ROM -- ~;		fill the rest with F's.  The code is ~;		DCB.B (24*1024)-(*-VideoDeclROM), $FF.;	4.	The siZER program has an error where it writes into vendorUse4 when ~;		it should be in vendorUse3 (the only time vendorUse3 should be ~;		written is when the monitor is changed by the user by the Monitor ~;		Extension or siZER).  I'm saving 4 into 6 as well so I can ~;		determine when it gets screwed up.;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		TITLE		'Board 369 Driver (XCEED SE/306-48)'		OPT		ALL		STRING		C		MACHINE		MC68020		CASE		OFF		BLANKS		ON		PRINT		OFF		INCLUDE	'QuickEqu.a'		INCLUDE	'SysEqu.a'		INCLUDE	'ROMEqu.a'		INCLUDE	'Traps.a'		INCLUDE	'Syserr.a'		INCLUDE	'VideoEqu.a'		INCLUDE	'SlotEqu.A'		MACRO&lbl		MyRevLev;&lbl		DC.L		'Rev. 1.1', 0		;llsm 6/15/90;&lbl		DC.L		'Rev. 1.2', 0		;llsm 8/22/90;&lbl		DC.L		'Rev. 1.3a3', 0		;ts 12/18/90&lbl		DC.L		'Rev. 2.0', 0		;rb 5/21/93		ENDM		MACRO&lbl		MyBoard&lbl		DC.L		'XCEED Color 30HRª V2.0', 0		ENDM		PRINT		ON		INCLUDE		'369includes.a'; --------------------------------------------------------------------------------------------; MAIN; --------------------------------------------------------------------------------------------VideoDeclROM	MAIN; To use the 32K ROM, put this stuff in the last 1/4 -- fill the rest with F's.; The code is DCB.B (24*1024)-(*-VideoDeclROM), $FF;rb NOTE 7		DCB.B		(16*1024)-(*-VideoDeclROM), $FF	;rb NOTE 7_sRsrcDir	OSLstEntry	sRsrcBoard, _sRsrcBoard		OSLstEntry	sRsrc6x4Video, _sRsrc6x4Video		; 24-bit 6x4 monitor		OSLstEntry	sRsrcVGA, _sRsrcVGA			; 24-bit 6x4 VGA					(ts 1/15/91)		OSLstEntry	sRsrcPortrait, _sRsrcPortrait		; 24-bit Portrait					(ts 1/15/91)		OSLstEntry	sRsrcBartlett, _sRsrcBartlett		; 24-bit Bartlett (512x342)			(ts 1/15/91)		OSLstEntry	sRsrcVV1kx1k, _sRsrcVV1kx1k		; 24-bit 1kx1k monitor		OSLstEntry	sRsrcVV1kx512, _sRsrcVV1kx512		; 24-bit 1kx512 monitor		OSLstEntry	sRsrctwelve, _sRsrctwelve			;r.b. new rez svga		OSLstEntry	sRsrcfifty, _sRsrc8x6			;r.b. NOTE 28 new rez svga		OSLstEntry	sRsrcsixty, _sRsrc8x6			;r.b. NOTE 28 new rez svga		OSLstEntry	sRsrcseventy, _sRsrc8x6			;r.b. NOTE 28 new rez svga		OSLstEntry	sRsrc832x624, _sRsrc832x624		;r.b new rez apple 16inch		OSLstEntry	sRsrc1x7, _sRsrc1x7			;rb NOTE 28		OSLstEntry	sRsrc6x4Video32, _sRsrc6x4Video32	; 32-bit 6x4 monitor		OSLstEntry	sRsrcVGA32, _sRsrcVGA32			; 32-bit 6x4 VGA					(ts 1/15/91)		OSLstEntry	sRsrcPortrait32, _sRsrcPortrait32	; 32-bit Portrait					(ts 1/15/91)		OSLstEntry	sRsrcBartlett32, _sRsrcBartlett32	; 32-bit Bartlett (512x342)			(ts 1/15/91)		OSLstEntry	sRsrcVV1kx1k32, _sRsrcVV1kx1k32		; 32-bit 1kx1k monitor		OSLstEntry	sRsrcVV1kx51232, _sRsrcVV1kx51232	; 32-bit 1kx512 monitor		OSLstEntry	sRsrctwelveQ32, _sRsrctwelveQ32		;r.b. new rez svga		OSLstEntry	sRsrcfiftyQ32, _sRsrc8x6Q32		;r.b. new rez svga		OSLstEntry	sRsrcsixtyQ32, _sRsrc8x6Q32		;r.b. new rez svga		OSLstEntry	sRsrcseventyQ32, _sRsrc8x6Q32		;r.b. new rez svga		OSLstEntry	sRsrc832x624Q32, _sRsrc832x624Q32	;r.b new rez apple 16inch		OSLstEntry	sRsrc1x7Q32, _sRsrc1x7Q32		;rb NOTE 28		DatLstEntry	EndOfList, 0_sRsrcBoard	OSLstEntry	sRsrcType, _BoardType		OSLstEntry	sRsrcName, _BoardName		OSLstEntry	sRsrcIcon, _BoardIcon		DatLstEntry	BoardId, kColor8BoardID		OSLstEntry	PrimaryInit, _sPInitRec		OSLstEntry	VendorInfo, _VendorInfo		OSLstEntry	secondaryInit, _sSInitRec		DatLstEntry	EndOfList, 0_BoardType	DC.W		catBoard, typBoard, 0, 0_BoardName	myBoard_BoardIcon	DC.W		$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF		DC.W		$FFFF,$FFFF,$BFA3,$E3FF,$9FC3,$C3F9,$8FEB,$CFF9		DC.W		$87F3,$CFE1,$A3FB,$FFE3,$81FF,$FF81,$88FF,$FF89		DC.W		$807F,$FE01,$A23F,$FE23,$801F,$F801,$888F,$F889		DC.W		$800F,$F001,$A23F,$FA23,$803F,$FC01,$88FF,$FE89		DC.W		$80FF,$FF01,$A3FF,$FFA3,$83FB,$DFC1,$8FFB,$CFE9		DC.W		$8FE3,$C7F1,$BFE3,$E3FB,$BF83,$C1FD,$FF8B,$C8FF		DC.W		$FE03,$C07F,$FE23,$E23F,$F803,$C01F,$FFFF,$FFFF;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~;PrimaryInit;DESCRIPTION:;	PrimaryInit _sPInitRec is an sExecBlock (C&D 8-3).;DECLARATION:;	_sPInitProc;;ARGUMENTS:;	On Entry	A0 = Ptr to SEBlock.;	On Exit		seStatus field = +1 if successful init.;			seStatus field = -1 if error during init.;EXAMPLE:;	N/A.;HISTORY:;	112691	llsm	Named registers.;	112791	llsm	Put clock value in External register.;	120291	llsm	Changed all ExtMode and ModesB Maverick values.  The IRE ~;			bit moved from ExtMode to ModesB.  ExtMode now has the ~;			monitor and depth (1-bit mode).;	120691	llsm	Can exit with error if no cable or Bartlett.;	121191	llsm	Changed Maverick numbers.  Color table was set wrong, was ~;			using ClutReadOffs instead of ClutDataRegOffs.;	121291	llsm	Write vendorUse4 into vendorUse6 as well, to fix siZER ~;			error (writes to 4 instead of 3).  If 4 and 6 are ~;			different, then move 4 to 3 and 6 to 4.;	121391	llsm	Changed the Maverick numbers for Portrait to remove white ~;			line on right when Gamma Contrast was turned down.;	121791	llsm	Changed Maverick numbers for everything -- Rev. F?;	121891	llsm	Changed Maverick numbers.;	121991		Changed Maverick numbers for Bartlett.;	122091	llsm	Put VFPorch value for 6x4 virtual here.  Was in SetMode, ~;			but doesn't depend on mode.;	011492	llsm	Change from Maverick to Gambler, with G300 bit (in ModesA ~;			register) inverted.;	011692	llsm	The Debug Select bits in ModesB register changed from ~;			3 to 0 ($601 -> $001; $600 ->$000; $620 ->$020).;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~_sPInitRec		DC.L		_EndsPinitRec - _sPInitRec	; Block Size		DC.B		sExec2				; code		DC.B		sCPU68020			; revision level		DC.W		0				; reserved		DC.L		_sPInitProc - *			; offset to code		WITH		seBlock, spBlock, SPRAMRecord_sPInitProcsRsrcD3		SET	D3spBlockA1	SET	A1SEBlockA3	SET	A3BaseA2		SET	A2; MOVE.L		D4, -(SP); MOVE.L		#$56780000, D4; MARK_PROGRESS; MOVE.L		(SP)+, D4; MOVE.L		D4, -(SP); MOVE.L		#$56560000, D4; STORE_ERROR; MOVE.L		(SP)+, D4		MOVEM.L		A0-A4/D0-D6, -(SP)		MOVE.W		#1, seStatus(A0)		; successful initialization		MOVE.L		A0, SEBlockA3			; save param block {A0 is destroyed}; --------------------------------------------------------------------------------------------; Turn the slot number into a 32-bit base address.; --------------------------------------------------------------------------------------------		MOVEQ		#0, D0			; D0 <- 00000000		MOVE.B		seSlot(SEBlockA3), D0	; D0 <- 0000000s		OR.W		#$F0, D0		; D0 <- 000000Fs		SWAP		D0			; D0 <- 00Fs0000		LSL.L		#8, D0			; D0 <- Fs000000		MOVE.L		D0, BaseA2		; A2 <- Base address to the slot.; --------------------------------------------------------------------------------------------; Reset the hardware -- Set mode to one bit per pixel and Disable video.								;; --------------------------------------------------------------------------------------------		MOVE.B		#true32b, D0		_SwapMMUMode					;Set to 32-bit mode; --------------------------------------------------------------------------------------------; 2/26/91	t.s.	Added;	Cable Test:;	1)	Turn on video.;	2)	Fill frame buffer with "C0".;	3)	Write Cable Detect regs.;	4)	Check External reg in loop.  Loop until composite video bits goes high.;			C1 - No Monitor Cable;			C9 - Has Monitor Cable; --------------------------------------------------------------------------------------------;	1)	Turn on video and Write Cable Detect regs.;			Init Maverick Mode A Registers; ### Make this into a table INIT_MAVERICK InitMaverick; llsm 12/6/91 Changed ALL of these Maverick numbers to match the 6x4 monitor.; llsm 12/6/91 Turn the video on LAST; Init Maverick Mode A Registers (ts 12/3/90)		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		MOVE.L		#$C0E00000, kMavAHFPorch(A0)	; $03F		MOVE.L		#$E0E00000, kMavAHSync(A0)	; $01F		MOVE.L		#$BDE00000, kMavAHBPorch(A0)	; $042 ($043) llsm 12/18/91		MOVE.L		#$32E00000, kMavAHLine(A0)	; $0CD ($0CE) llsm 12/18/91		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $002		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $002		MOVE.L		#$D9E00000, kMavAVBPorch(A0)	; $026		MOVE.L		#$20C00000, kMavAFrameLines(A0)	; $1DF		MOVE.L		#$8DC00000, kMavAHSync22(A0)	; $172		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$15E00000, kMavARowMSBs(A0)	; $0EA		MOVE.L		#$FF400000, kMavAModesA(A0)	; $500 ($580) llsm 1/14/92		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001		MOVE.L		#$F4E00000, kMavAFS2(A0)	; $00B ($00A) llsm 12/18/91		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000; Init Maverick Mode B Registers (ts 12/3/90)		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$FCE00000, kMavBExtMode(A0)		; $003 1-bit 6x4		MOVE.L		#$FBE00000, kMavBRefreshCnt(A0)		; $004		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 llsm 1/16/92		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#k30Clock6x4, kMavBExternal(A0)	; llsm 11/27/91		MOVE.L		#$FEE00000, kMavBModesB(A0)		; $001 llsm 1/16/92		_SwapMMUMode			; back to original mode llsm 12/6/91		CABLE_DETECT			; D0 = 0 if cable llsm 12/6/91		MOVE.L		D0, D2		MOVE.B		#true32b, D0	; llsm 12/6/91		_SwapMMUMode			; Set to 32-bit mode llsm 12/6/91		MOVE.L		D0, D6		; llsm 12/6/91		CMP.L	#0, D2			; llsm 12/6/91		BEQ.S	@IsExternalVideo	; llsm 12/6/91; Otherwise, is either Bartlett or no monitor found.; --------------------------------------------------------------------------------------------;	No Cable; --------------------------------------------------------------------------------------------		MOVE.L		kMavBExternal(A0), D3		ANDI.L		#kExtRd_Bartlett_Bit, D3		BEQ.W		@Bartlett		MOVE.W		#$0, sRsrcD3		;No monitor valid.		MOVE.L		D6, D0		; llsm 12/6/91		_SwapMMUMode			; back to original mode llsm 12/6/91		BRA.W		@pErrExit	; leave with error llsm 12/6/91 added@IsExternalVideo; --------------------------------------------------------------------------------------------; The following logic set D3 to the proper monitor type.; ts 1/30/91 Added; --------------------------------------------------------------------------------------------		CLR.L		D1		MOVEQ		#spBlockSize+8, D0		_NewPtr		,SYS, CLEAR			;spBlockPtr		MOVEA.L		A0, spBlockA1		MOVE.B		seSlot(SEBlockA3), spSlot(spBlockA1)		MOVE.L		#sizeSPRAMRec, D0		_NewPtr		,SYS, CLEAR			;Allocate an SPRAMRec		MOVE.L		A0, spResult(spBlockA1)		MOVE.L		spBlockA1, A0		_sReadPRAMRec;$$$$ llsm 12/12/91 Fix siZER.; To fix siZER error, saved vendorUse4 (overwritten by siZER) in vendorUse6 (unused).;	If 4 and 6 don't match, copy 4 to 3 and 6 to 4.		MOVEM.L		A0-A1/D0-D1, -(SP)		CLR.L		D0		CLR.L		D1		MOVE.L		spResult(spBlockA1), A0		MOVE.B		yVendorUse4(A0), D0		MOVE.B		yVendorUse6(A0), D1		CMP.B		D0, D1		BEQ.S		@stseven		MOVE.B			D0, yVendorUse3(A0)	; copy 4 to 3		MOVE.B			D1, yVendorUse4(A0)	; copy 6 to 4		MOVE.L		A0, spsPointer(spBlockA1)		MOVE.L		spBlockA1, A0		_sPutPRAMRec		_sReadPRAMRec@stseven	MOVEM.L		(SP)+, A0-A1/D0-D1;$$$$ llsm 12/12/91 Fix siZER.		MOVE.L		spResult(spBlockA1), A0		MOVE.B		yVendorUse2(A0), D5		;Virtual Mode		MOVE.B		yVendorUse3(A0), sRsrcD3	;Phys. Monitor		_DisposPtr				MOVE.L		spBlockA1, A0		_DisposPtr		CMPI.B		#sRsrcTwelve, sRsrcD3		;rb NOTE 40		BLE.S		@nothere		MOVE.B		#0, D5				@nothere	CMPI.B		#sRsrc6x4Video, sRsrcD3		BEQ.S		@SixByFour		CMPI.B		#sRsrcVGA, sRsrcD3		BEQ.W		@SixByFourVGA		CMPI.B		#sRsrcPortrait, sRsrcD3		BEQ.W		@Portrait		CMPI.B		#sRsrcsixty, sRsrcD3		;rb NOTE 6		BEQ.W		@eighttwo		CMPI.B		#sRsrcfifty, sRsrcD3		;rb NOTE 29		BEQ.W		@eightone		CMPI.B		#sRsrctwelve, sRsrcD3		;rb NOTE 29		BEQ.W		@twelve		CMPI.B		#sRsrcseventy, sRsrcD3		;rb NOTE 29		BEQ.W		@eightthree		CMPI.B		#sRsrc832x624, sRsrcD3		BEQ.W		@eightstuff		CMPI.B		#sRsrc1x7, sRsrcD3		;rb NOTE 29		BEQ.W		@onexseven; Doesn't match anything, so force it to something.		MOVE.B		#sRsrc6x4Video, sRsrcD3; --------------------------------------------------------------------------------------------;	Init Maverick to 6x4 monitor; --------------------------------------------------------------------------------------------@SixByFour;		MOVE.B		#sRsrc6x4Video, sRsrcD3		;D3 to point to 24-bit 6x4 resource; Init Maverick Mode A Registers (ts 12/3/90)		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		MOVE.L		#$C0E00000, kMavAHFPorch(A0)	; $03F		MOVE.L		#$E0E00000, kMavAHSync(A0)	; $01F		MOVE.L		#$BDE00000, kMavAHBPorch(A0)	; $042 ($043) llsm 12/18/91		MOVE.L		#$32E00000, kMavAHLine(A0)	; $0CD ($0CE) llsm 12/18/91		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $002		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $002		MOVE.L		#$D9E00000, kMavAVBPorch(A0)	; $026		MOVE.L		#$20C00000, kMavAFrameLines(A0)	; $1DF		MOVE.L		#$8DC00000, kMavAHSync22(A0)	; $172		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$15E00000, kMavARowMSBs(A0)	; $0EA		MOVE.L		#$FF400000, kMavAModesA(A0)	; $500 ($580) llsm 1/14/92		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001		MOVE.L		#$F4E00000, kMavAFS2(A0)	; $00B ($00A) llsm 12/18/91		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000; Init Maverick Mode B Registers (ts 12/3/90)		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$FCE00000, kMavBExtMode(A0)		; $003 1-bit 6x4		MOVE.L		#$FBE00000, kMavBRefreshCnt(A0)		; $004		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 llsm 1/16/92		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#k30Clock6x4, kMavBExternal(A0)	; llsm 11/27/91		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------;	Init Maverick to 6x4 VGA monitor; ts 1/24/91	added; --------------------------------------------------------------------------------------------@SixByFourVGA;		MOVE.B		#sRsrcVGA, sRsrcD3		;D3 to point to 24-bit 6x4 VGA resource; Init Maverick Mode A Registers		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		MOVE.L		#$F0E00000, kMavAHFPorch(A0)	; $00F		MOVE.L		#$D0E00000, kMavAHSync(A0)	; $02F		MOVE.L		#$EFE00000, kMavAHBPorch(A0)	; $010		MOVE.L		#$11E00000, kMavAHLine(A0)	; $0EE		MOVE.L		#$FAE00000, kMavAVFPorch(A0)	; $005		MOVE.L		#$FEE00000, kMavAVSync(A0)	; $001		MOVE.L		#$E1E00000, kMavAVBPorch(A0)	; $01E		MOVE.L		#$20C00000, kMavAFrameLines(A0)	; $1DF		MOVE.L		#$CFC00000, kMavAHSync22(A0)	; $130		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$12E00000, kMavARowMSBs(A0)	; $0ED		MOVE.L		#$FF400000, kMavAModesA(A0)	; $500 ($580) llsm 1/14/92		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001		MOVE.L		#$F4E00000, kMavAFS2(A0)	; $00B		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000; Init Maverick Mode B Registers (ts 12/3/90)		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$FCE00000, kMavBExtMode(A0)		; $003 1-bit 6x4VGA		MOVE.L		#$FBE00000, kMavBRefreshCnt(A0)		; $004		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 llsm 1/16/92		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#k25Clock6x4VGA, kMavBExternal(A0)	; llsm 12/18/91		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------;	Init Maverick to Portrait monitor; ts 1/24/91	added; --------------------------------------------------------------------------------------------@Portrait;		MOVE.B		#sRsrcPortrait, sRsrcD3		;D3 to point to 24-bit Portrait resource; Init Maverick Mode A Registers		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		MOVE.L		#$F0E00000, kMavAHFPorch(A0)	; $00F		MOVE.L		#$ECE00000, kMavAHSync(A0)	; $013		MOVE.L		#$F0E00000, kMavAHBPorch(A0)	; $00F ($010)		MOVE.L		#$92E00000, kMavAHLine(A0)	; $06D ($06C)		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $002		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $002		MOVE.L		#$D6E00000, kMavAVBPorch(A0)	; $029 ($023)		MOVE.L		#$99800000, kMavAFrameLines(A0)	; $366		MOVE.L		#$FEE00000, kMavAHSync22(A0)	; $001		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$16C00000, kMavARowMSBs(A0)	; $1E9 ($1EC)		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429 ($4A9) llsm 1/14/92		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001 ($004) llsm 12/18/91		MOVE.L		#$F9E00000, kMavAFS2(A0)	; $006 ($005)		MOVE.L		#$7FE00000, kMavAReqToTransDly(A0)	; $080		MOVE.L		#$7FE00000, kMavATransToReqDly(A0)	; $080; Init Maverick Mode B Registers		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$F4E00000, kMavBExtMode(A0)		; $00B 1-bit Portrait		MOVE.L		#$FAE00000, kMavBRefreshCnt(A0)		; $005		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 llsm 1/16/92		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#k57ClockPortrait, kMavBExternal(A0)	; llsm 11/27/91		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------; --------------------------------------------------------------------------------------------;rb NOTE 39	Init Maverick to 12inch monitor   for svga; --------------------------------------------------------------------------------------------@twelve;		MOVE.B		#sRsrctwelve, sRsrcD3		;D3 to point to 24-bit 8x6 resource; Init Maverick Mode A Registers )		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		;rb NOTE 9		MOVE.L		#$EFE00000, kMavAHFPorch(A0)	; $010		MOVE.L		#$E7E00000, kMavAHSync(A0)	; $018		MOVE.L		#$D5E00000, kMavAHBPorch(A0)	; $2a		MOVE.L		#$43E00000, kMavAHLine(A0)	; $BC		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $2		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $2		MOVE.L		#$EDE00000, kMavAVBPorch(A0)	; $12		MOVE.L		#$80C00000, kMavAFrameLines(A0)	; $17F		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $0		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$0BE00000, kMavARowMSBs(A0)	; $F4		MOVE.L		#$FF400000, kMavAModesA(A0)	; $500		MOVE.L		#$FDE00000, kMavAFS1(A0)	; $002		MOVE.L		#$FBE00000, kMavAFS2(A0)	; $004 		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $00		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $00; Init Maverick Mode B Registers 		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$FEE00000, kMavBExtMode(A0)		; $001		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#ktwelveClock, kMavBExternal(A0)	;1		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------; --------------------------------------------------------------------------------------------;rb NOTE 30	Init Maverick to 8x6@56HZ monitor   for svga; --------------------------------------------------------------------------------------------@eightone;		MOVE.B		#sRsrc8x6V56, sRsrcD3		;D3 to point to 24-bit 8x6 resource; Init Maverick Mode A Registers )		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		;rb NOTE 9		MOVE.L		#$E7E00000, kMavAHFPorch(A0)	; $018		MOVE.L		#$DBE00000, kMavAHSync(A0)	; $024		MOVE.L		#$7DE00000, kMavAHBPorch(A0)	; $82		MOVE.L		#$E7C00000, kMavAHLine(A0)	; $118		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $2		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $2		MOVE.L		#$F5E00000, kMavAVBPorch(A0)	; $A		MOVE.L		#$A9A00000, kMavAFrameLines(A0)	; $256		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$06C00000, kMavARowMSBs(A0)	; $1F9		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429		MOVE.L		#$FDE00000, kMavAFS1(A0)	; $002		MOVE.L		#$FDE00000, kMavAFS2(A0)	; $002 		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000; Init Maverick Mode B Registers 		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$FEE00000, kMavBExtMode(A0)		; $001		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$FDE00000, kMavBNS(A0)			; $002		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#kfiftyClock, kMavBExternal(A0)	;		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------; --------------------------------------------------------------------------------------------;rb NOTE 30	Init Maverick to 8x6@60Hz monitor   for svga; --------------------------------------------------------------------------------------------@eighttwo; Init Maverick Mode A Registers )		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		;rb NOTE 9		MOVE.L		#$EDE00000, kMavAHFPorch(A0)	; $012		MOVE.L		#$EBE00000, kMavAHSync(A0)	; $014		MOVE.L		#$D8E00000, kMavAHBPorch(A0)	; $27		MOVE.L		#$80E00000, kMavAHLine(A0)	; $7F		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $2		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $2		MOVE.L		#$EFE00000, kMavAVBPorch(A0)	; $10		MOVE.L		#$A9A00000, kMavAFrameLines(A0)	; $256		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$09C00000, kMavARowMSBs(A0)	; $1F6		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429		MOVE.L		#$F7E00000, kMavAFS1(A0)	; $008		MOVE.L		#$F5E00000, kMavAFS2(A0)	; $00A 		MOVE.L		#$7FE00000, kMavAReqToTransDly(A0)	; $080		MOVE.L		#$7FE00000, kMavATransToReqDly(A0)	; $080; Init Maverick Mode B Registers 		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$F7E00000, kMavBExtMode(A0)		; $008		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#ksixtyClock, kMavBExternal(A0)	;F		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------; --------------------------------------------------------------------------------------------;rb NOTE 30	Init Maverick to 8x6@72Hz monitor   for svga; --------------------------------------------------------------------------------------------@eightthree; Init Maverick Mode A Registers )		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		;rb NOTE 9		MOVE.L		#$E0E00000, kMavAHFPorch(A0)	; $01F		MOVE.L		#$DBE00000, kMavAHSync(A0)	; $024		MOVE.L		#$B9E00000, kMavAHBPorch(A0)	; $46		MOVE.L		#$A3E00000, kMavAHLine(A0)	; $5C		MOVE.L		#$F5E00000, kMavAVFPorch(A0)	; $A		MOVE.L		#$F5E00000, kMavAVSync(A0)	; $A		MOVE.L		#$E7E00000, kMavAVBPorch(A0)	; $18		MOVE.L		#$A9A00000, kMavAFrameLines(A0)	; $256		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$15C00000, kMavARowMSBs(A0)	; $1EA		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429		MOVE.L		#$F9E00000, kMavAFS1(A0)	; $006		MOVE.L		#$F7E00000, kMavAFS2(A0)	; $008 		MOVE.L		#$8FE00000, kMavAReqToTransDly(A0)	; $070		MOVE.L		#$8FE00000, kMavATransToReqDly(A0)	; $070; Init Maverick Mode B Registers 		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$F7E00000, kMavBExtMode(A0)		; $008		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#kseventyClock, kMavBExternal(A0)	;		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------;rb  NOTE 6	Init Maverick to 832x624 monitor; --------------------------------------------------------------------------------------------@eightstuff;		MOVE.B		#sRsrc832x624, sRsrcD3		;D3 to point to 24-bit 832x624 resource; Init Maverick Mode A Registers 		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		MOVE.L		#$F3E00000, kMavAHFPorch(A0)	; $00C		MOVE.L		#$EDE00000, kMavAHSync(A0)	; $012		MOVE.L		#$B0E00000, kMavAHBPorch(A0)	; $04F 		MOVE.L		#$7FE00000, kMavAHLine(A0)	; $080 		MOVE.L		#$FBE00000, kMavAVFPorch(A0)	; $004		MOVE.L		#$F7E00000, kMavAVSync(A0)	; $008		MOVE.L		#$EFE00000, kMavAVBPorch(A0)	; $010		MOVE.L		#$92A00000, kMavAFrameLines(A0)	; $26D		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$0DC00000, kMavARowMSBs(A0)	; $1f2		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429 		MOVE.L		#$FDE00000, kMavAFS1(A0)	; $002		MOVE.L		#$FBE00000, kMavAFS2(A0)	; $004 		MOVE.L		#$7FE00000, kMavAReqToTransDly(A0)	; $080		MOVE.L		#$7FE00000, kMavATransToReqDly(A0)	; $080; Init Maverick Mode B Registers		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$F7E00000, kMavBExtMode(A0)		; $008 		MOVE.L		#$F9E00000, kMavBRefreshCnt(A0)		; $006*		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EDE00000, kMavBNS(A0)			; $012*		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#k832x624Clock, kMavBExternal(A0)	; 		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------;rb  NOTE 30	Init Maverick to 1024x768 monitor; --------------------------------------------------------------------------------------------@onexseven;		MOVE.B		#sRsrc1x7, sRsrcD3		;D3 to point to 24-bit 832x624 resource; Init Maverick Mode A Registers 		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		MOVE.L		#$E2E00000, kMavAHFPorch(A0)	; $01D		MOVE.L		#$DFE00000, kMavAHSync(A0)	; $020		MOVE.L		#$C9E00000, kMavAHBPorch(A0)	; $036 		MOVE.L		#$5CE00000, kMavAHLine(A0)	; $0A3 		MOVE.L		#$FBE00000, kMavAVFPorch(A0)	; $004		MOVE.L		#$FBE00000, kMavAVSync(A0)	; $004		MOVE.L		#$EDE00000, kMavAVBPorch(A0)	; $012		MOVE.L		#$01A00000, kMavAFrameLines(A0)	; $2FE		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$0CC00000, kMavARowMSBs(A0)	; $1F3		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429 		MOVE.L		#$F9E00000, kMavAFS1(A0)	; $006		MOVE.L		#$F7E00000, kMavAFS2(A0)	; $008 		MOVE.L		#$7FE00000, kMavAReqToTransDly(A0)	; $080		MOVE.L		#$7FE00000, kMavATransToReqDly(A0)	; $080; Init Maverick Mode B Registers		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$F7E00000, kMavBExtMode(A0)		; $008 		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$F3E00000, kMavBNS(A0)			; $00C		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#k1x7Clock, kMavBExternal(A0)	; 		BRA.W		@setOneBitMode; --------------------------------------------------------------------------------------------;	Init Maverick to Bartlett monitor (ts 1/16/91); --------------------------------------------------------------------------------------------@Bartlett; --------------------------------------------------------------------------------------------;Disable slot $E		MOVEM.L		A0/D0-D1, -(SP)		CLR.L		D1		MOVEQ		#spBlockSize+8, D0		_NewPtr		,SYS, CLEAR		;spBlockPtr		MOVE.B		#$E, spSlot(A0)		MOVE.B		#0, spExtDev(A0)		MOVE.B		#$01, spID(A0)		_sDeleteSRTRec		MOVE.B		#$E, spSlot(A0)		MOVE.B		#0, spExtDev(A0)		MOVE.B		#$80, spID(A0)		_sDeleteSRTRec		MOVE.B		#$E, spSlot(A0)		MOVE.B		#0, spExtDev(A0)		MOVE.B		#$A0, spID(A0)		_sDeleteSRTRec		MOVE.B		#$E, spSlot(A0)		MOVE.B		#0, spExtDev(A0)		MOVE.B		#$FF, spID(A0)		_sDeleteSRTRec		_DisposPtr; Blacken the Internal video frame buffer		MOVE.L	#$FEE08040, A0			; 7/2/91 ts Base Address for internal video		MOVE.L	#$1560, D0			; 7/2/91 ts The Counter@Blacken						; 7/2/91 ts		MOVE.L	#$FFFFFFFF, (A0)+		; 7/2/91 ts blacken word		DBF	D0, @Blacken			; 7/2/91 ts Done? No, Do it some more.;Force slot $9 to be Main		MOVE.L	#$09830983, -(SP)		MOVE.L	SP, A0				;BufferAddress into A0		MOVE.L	#$00020080, D0			;Length, Clock Address		_WriteXPRam		MOVE.L	(SP)+, D0		MOVEM.L		(SP)+, A0/D0-D1; --------------------------------------------------------------------------------------------		MOVE.B		#sRsrcBartlett, sRsrcD3		;D3 to point to 24-bit Bartlett resource; Init Maverick Mode A Registers		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeAReg, A0		MOVE.L		#$EBE00000, kMavAHFPorch(A0)	; $014 12/19/91		MOVE.L		#$C0E00000, kMavAHSync(A0)	; $03F 12/19/91		MOVE.L		#$F2E00000, kMavAHBPorch(A0)	; $00D 12/19/91		MOVE.L		#$62E00000, kMavAHLine(A0)	; $09D		MOVE.L		#$FBE00000, kMavAVFPorch(A0)	; $004		MOVE.L		#$FCE00000, kMavAVSync(A0)	; $003		MOVE.L		#$EEE00000, kMavAVBPorch(A0)	; $011		MOVE.L		#$ABC00000, kMavAFrameLines(A0)	; $154		MOVE.L		#$E5C00000, kMavAHSync22(A0)	; $11A		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000		MOVE.L		#$0CE00000, kMavARowMSBs(A0)	; $0F3		MOVE.L		#$FA400000, kMavAModesA(A0)	; $505 ($585) llsm 1/14/92		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001		MOVE.L		#$F4E00000, kMavAFS2(A0)	; $00B		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000; Init Maverick Mode B Registers		MOVE.L		BaseA2, A0			; get slot base		ADD.L		#kMavModeBReg, A0		MOVE.L		#$F0E00000, kMavBExtMode(A0)		; $00F 1-bit Bartlett		MOVE.L		#$F8E00000, kMavBRefreshCnt(A0)		; $007		MOVE.L		#$DFE00000, kMavBModesB(A0)		; $020		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000		MOVE.L		#k15ClockBartlett, kMavBExternal(A0)	; llsm 11/27/91		@setOneBitMode		MOVE.L		BaseA2, A0		ADD.L		#kMavClutBaseAddr, A0		MOVE.L		#1, kMavClutMaskRegOffs(A0)	; 1-bit mode; --------------------------------------------------------------------------------------------; set the color table to black and white; --------------------------------------------------------------------------------------------		MOVE		#1, D4				; go thru loop twice		CLR.L		D2				; first entry is black		CLR.L		kMavClutWriteOffs(A0)		; select entry 0@pinit1			MOVE.L		D2, kMavClutDataRegOffs(A0)	; red llsm 12/11/91 was kMavClutReadOffs		MOVE.L		D2, kMavClutDataRegOffs(A0)	; green llsm 12/11/91		MOVE.L		D2, kMavClutDataRegOffs(A0)	; blue llsm 12/11/91		NOT.L		D2				; change black to white		DBRA		D4, @pinit1; --------------------------------------------------------------------------------------------; clear video RAM to a nice gray; --------------------------------------------------------------------------------------------		MOVE.L		BaseA2, A0		MOVE.L		#$AAAAAAAA, D4		CMP.B		#sRsrcPortrait, sRsrcD3		BEQ.S		@zeroShort2		CMP.B		#sRsrcfifty, sRsrcD3		;rb NOTE 11		BEQ.S		@zeroShort2		CMP.B		#sRsrcsixty, sRsrcD3		;rb NOTE 11		BEQ.S		@zeroShort2		CMP.B		#sRsrcseventy, sRsrcD3		;rb NOTE 11		BEQ.S		@zeroShort2		CMP.B		#sRsrc1x7, sRsrcD3		;rb NOTE 37		BEQ.S		@zeroShort2		CMP.B		#sRsrc832x624, sRsrcD3		BEQ.S		@zeroShort2		CMP.B		#1, D5				;1Kx1K virtual video		BEQ.S		@zeroShort2		MOVE.W		#kRows, D2			;D0 is rows-1		BRA.S		@zero0@zeroShort2		MOVE.W		#kShortRows, D2			;D0 is rows-1@zero0		CMP.B		#sRsrcPortrait, sRsrcD3		BEQ.S		@zeroShort		CMP.B		#sRsrcfifty, sRsrcD3		;rb NOTE 11		BEQ.S		@zeroShort		CMP.B		#sRsrcsixty, sRsrcD3		;rb NOTE 11		BEQ.S		@zeroShort		CMP.B		#sRsrcseventy, sRsrcD3		;rb NOTE 11		BEQ.S		@zeroShort		CMP.B		#sRsrc1x7, sRsrcD3		;rb NOTE 11		BEQ.S		@zeroShort		CMP.B		#sRsrc832x624, sRsrcD3		BEQ.S		@zeroShort		CMP.B		#1, D5				;1Kx1K virtual video		BEQ.S		@zeroShort		MOVE.W		#kRowlongs, D1			; number of longs in a row		BRA.S		@zero1@zeroShort		MOVE.W		#kShortrowlongs, D1		; number of longs in a row@zero1		MOVE.L		D4, (A0)+		DBRA		D1, @zero1		NOT.L		D4		DBRA		D2, @zero0 MOVE.L		D6, D0		; llsm 12/6/91		_SwapMMUMode					; back to original mode; --------------------------------------------------------------------------------------------; The following logic set D3 to the proper monitor type.; ts 12/18/90 Added; --------------------------------------------------------------------------------------------		CLR.L		D1		MOVEQ		#spBlockSize+8, D0		_NewPtr		,SYS, CLEAR		;spBlockPtr		MOVEA.L		A0, spBlockA1; Do we do virtual monitors?		MOVE.B		seSlot(SEBlockA3), spSlot(spBlockA1)		MOVE.L		#sizeSPRAMRec, D0		_NewPtr		,SYS, CLEAR		;Allocate an SPRAMRec		MOVE.L		A0, spResult(spBlockA1)		MOVE.L		spBlockA1, A0		_sReadPRAMRec;$$$$ llsm 12/12/91 Fix siZER.; To fix siZER error, saved vendorUse4 (overwritten by siZER) in vendorUse6 (unused).;	If 4 and 6 don't match, copy 4 to 3 and 6 to 4.		MOVEM.L		A0-A1/D0-D1, -(SP)		CLR.L		D0		CLR.L		D1		MOVE.L		spResult(spBlockA1), A0		MOVE.B		yVendorUse4(A0), D0		MOVE.B		yVendorUse6(A0), D1		CMP.B		D0, D1		BEQ.S		@NeverMind2		MOVE.B			D0, yVendorUse3(A0)	; copy 4 to 3		MOVE.B			D1, yVendorUse4(A0)	; copy 6 to 4		MOVE.L		A0, spsPointer(spBlockA1)		MOVE.L		spBlockA1, A0		_sPutPRAMRec		_sReadPRAMRec@NeverMind2		MOVEM.L		(SP)+, A0-A1/D0-D1;$$$$ llsm 12/12/91 Fix siZER.		MOVE.L		spResult(spBlockA1), A0		CMP.B		yVendorUse4(A0), sRsrcD3		BEQ.S		@SkipReset2		MOVE.B		#0, ScrnInval		; Invalidate the 'scrn' resource.		MOVE.B		#$80, yVendorUse1(A0)	; Two Color screen depth.		MOVE.B		yVendorUse5(A0), D0	;IRE/Gray		AND.B		#kVend_ColGray_Mask, D0	; Clear Gray/Color bit		MOVE.B		D0, yVendorUse5(A0)	;IRE/Gray@SkipReset2		MOVE.B		sRsrcD3, yVendorUse4(A0)	; Save REAL monitor type		MOVE.B		sRsrcD3, yVendorUse6(A0); $$$$ this fixes siZER error		CMP.L		#$00, sRsrcD3		BEQ.W		@SkipVirtual		;0 = Do Nothin				MOVE.B		yVendorUse3(A0), D0	;rb NOTE 40		CMPI.B		#sRsrcTwelve, D0		BEQ.S		@nexstep		CMPI.B		#sRsrcTwelve, D0		BGT.W		@EscapeVirtual		@nexstep	MOVE.B		yVendorUse2(A0), D0	; Virtual?		BEQ.W		@SkipVirtual		;0 = Do Nothing		CMPI.B		#sRsrc6x4Video, sRsrcD3	; llsm 12/20/91		BNE.S		@Not6x4Virtual		; llsm 12/20/91		MOVE.L		BaseA2, A4		; get slot base llsm 12/20/91		ADD.L		#kMavModeAReg, A4	; llsm 12/20/91		MOVE.L		D0, -(SP)		; llsm 12/20/91		MOVE.B		#true32b, D0		; llsm 12/20/91		_SwapMMUMode				;Set to 32-bit mode llsm 12/20/91		MOVE.L		#$FEE00000, kMavAVFPorch(A4)	; $001 llsm 12/20/91 was in SetMode		_SwapMMUMode				; back to original mode llsm 12/20/91		MOVE.L		(SP)+, D0		; llsm 12/20/91@Not6x4Virtual						; llsm 12/20/91		CMP.B		#kMonitorVV1kx512, D0		BEQ.S		@oneKBy512; Adjust Maverick Registers for 1k x 1k		MOVE.L		BaseA2, A4		; get slot base		ADD.L		#kMavModeAReg, A4		MOVE.B		#true32b, D0		_SwapMMUMode				;Set to 32-bit mode		CMPI.B		#sRsrcBartlett, sRsrcD3		BEQ.S		@vBartlett		CMPI.B		#sRsrcTwelve, sRsrcD3		BEQ.S		@vmyapptwe		MOVE.L		#$0BC00000, kMavARowMSBs(A4)	; $1EB		MOVE.L		#$D7400000, kMavAModesA(A4)	; $528 ($5A8) llsm 1/14/92		BRA.S		@vContinue@vmyapptwe	MOVE.L		#$EFA00000, kMavARowMSBs(A4)	; $1F4		MOVE.L		#$FFA00000, kMavAColRow(A4)	; $200		MOVE.L		#$D7400000, kMavAModesA(A4)	; $528 ($5A8) llsm 1/14/92		BRA.S		@vContinue@vBartlett		MOVE.L		#$FFA00000, kMavAColRow(A4)	; $200		MOVE.L		#$0CC00000, kMavARowMSBs(A4)	; $1F3		MOVE.L		#$D2400000, kMavAModesA(A4)	; $52D ($5AD) llsm 1/14/92@vContinue		_SwapMMUMode				; back to original mode		MOVE.B		#sRsrcVV1kx1k, sRsrcD3	;1 = 1k by 1k virtual							;Note: 2 = 2k by 1k. Is not available on this card.		BRA.S		@SkipVirtual@oneKBy512		CMP.B		#sRsrcPortrait, sRsrcD3		BEQ.S		@EscapeVirtual		MOVE.B		#sRsrcVV1kx512, sRsrcD3	;3 = 1k by 512 virtual		BRA.S		@SkipVirtual@EscapeVirtual		MOVE.B		#0, yVendorUse2(A0)@SkipVirtual		MOVE.L		A0, spsPointer(spBlockA1)	;Write out REAL monitor type		MOVE.L		spBlockA1, A0		_sPutPRAMRec		MOVE.L		spsPointer(spBlockA1), A0		_DisposPtr; --------------------------------------------------------------------------------------------; The following logic deletes the "other" video resources.; ts 12/14/90 Added; --------------------------------------------------------------------------------------------		_sVersion		BNE.S		@noQD32	;32 bit quick draw is in ROM	;at this point, D3 should contain sRsrc6x4Video32		ADDI.B		#k32QDOffset, sRsrcD3	;D3 to point to 32-bit resource@noQD32	;no 32 bit Quick Draw in ROM	;at this point, D3 should contain the proper resource number.		MOVE.B		#kFirstMonitor, D2		MOVE.L		spBlockA1, A0	; llsm added 11/27/91@bye		CMP.B		D2, sRsrcD3		BEQ.S		@addone		MOVE.B		seSlot(SEBlockA3), spSlot(spBlockA1)	; llsm A1 was A0		MOVE.B		#0, spExtDev(spBlockA1)		MOVE.B		D2, spID(spBlockA1)		_sDeleteSRTRec		@addone		;ADDI.B		#1, D2		dc.l $06020001 				; TODO: remove this. This is ADDI.B explicitly in bytes							; otherwise ASM will optimize this to ADDQ.B 							; That's fine, only for the sake of verifying we can							; get the same output as they did 30 years ago.									CMPI.B		#152, D2		;rb NOTE 7		BLE.S		@bye			;rb NOTE 23 NOTE 31		MOVE.W		#1, D1		BRA.S		@exit			; llsm 12/6/91 added@pErrExit						; llsm 12/6/91 added		MOVE.W		#kError, D1		; D1 = init fail code llsm 12/6/91 added		MOVE.W		D1, seStatus(SEBlockA3)	; llsm 12/6/91		MOVEM.L		(SP)+, A0-A4/D0-D6	; llsm 12/6/91		RTS					; llsm 12/6/91@exit		MOVE.W		D1, seStatus(SEBlockA3)		MOVEA.L		spBlockA1, A0		_DisposPtr		MOVEM.L		(SP)+, A0-A4/D0-D6		RTS_EndsPinitRec	EQU		*;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~;SecondaryInit;DESCRIPTION:;	SecondaryInit _sSInitRec is an sExecBlock (C&D 8-3).  ~;	The code below attempts to implement the secondary init code as spelled ~;	out in Apple Computer's document "32-Bit Video Drivers - Rev 3.1".;DECLARATION:;	_sSInitProc;;ARGUMENTS:;	On Entry	A0	Ptr to seBlock.;	On Exit		seStatus field = +1 if successful init.;			seStatus field = -1 if error during init.;EXAMPLE:;	N/A.;HISTORY:;	121490	ts	Created.;	121790	ts	Add 32 byte offset to base video address.;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~_sSInitRec	DC.L		_EndsSinitRec - _sSInitRec	;Block Size		DC.B		sExec2				;code		DC.B		sCPU68020			;revision level		DC.W		0				;reserved		DC.L		_sSInitProc - *			;offset to code_sSInitProcsRsrcD3		SET	D3spBlockA1	SET	A1SEBlockA2	SET	A2		MOVEM.L		A0-A3/D0-D4, -(SP)		MOVE.L		A0, SEBlockA2		;A2 Ptr to seBlock	; build devBaseAddr from slot		MOVE.B		seSlot(SEBlockA2), D4		EXTB.L		D4		ROR.L		#8, D4		ORI.L		#$F0000000, D4		;Fs00 0000 for 32-bit mode		MOVEQ		#spBlockSize+8, D0		_NewPtr		,SYS, CLEAR		MOVEA.L		A0, spBlockA1		;A1 Ptr to spBlock	; determine if 32-bit Quickdraw is in ROM		_sVersion				;returns smSelOOBErr =-338, if no QD32		BNE		@goodexit		CMPI.L		#0, spResult(spBlockA1)		BGT.S		@sMgrOK			;positive spResult=qd32 here		BRA.W		@sErrExit		; llsm 12/6/91 added@sMgrOK		CMPI.L		#2, spResult(spBlockA1)		BEQ		@goodexit		;32QD in ROM exit@RAMsMgr		MOVE.W		#$AB03, D0		;32QD trap Address		_GetTrapAddress		MOVE.L		A0, D1		CMPI.L		#kUnimplemented, D1		BEQ		@goodexit; Do we do virtual monitors?		MOVE.B		seSlot(SEBlockA2), spSlot(spBlockA1)		MOVE.L		#sizeSPRAMRec, D0		_NewPtr		,SYS, CLEAR		;Allocate an SPRAMRec		MOVE.L		A0, spResult(spBlockA1)		MOVE.L		spBlockA1, A0		_sReadPRAMRec		MOVE.L		spResult(spBlockA1), A0		MOVE.B		yVendorUse4(A0), sRsrcD3	;Get Actual monitor resource		CMP.B		#sRsrcBartlett, sRsrcD3		; Is this Bartlett?		BNE.S		@SkipBartlett			; If No, skip.; kill the internal video		MOVE.L		SInfoPtr, A3			; Pointer to Slot info table		MOVE.L		$D*4(A3), $E*4(A3)		; Wipe out entry for Slot $E		MOVE.L		#$FEE08040, A3			; 7/2/91 ts Base Address for internal video		MOVE.L		#$1560, D0			; 7/2/91 ts The Counter@Blacken							; 7/2/91 ts		MOVE.L		#$FFFFFFFF, (A3)+		; 7/2/91 ts blacken word		DBF		D0, @Blacken			; 7/2/91 ts Done? No, Do it some more.@SkipBartlett		MOVE.B		yVendorUse2(A0), D0	;Check for virtual monitor		BEQ.S		@FinishVirtual		;0 = Do Nothing		CMP.B		#kMonitorVV1kx512, D0		BEQ.S		@oneKBy512		MOVE.B		#sRsrcVV1kx1k, sRsrcD3	;1 = 1k by 1k virtual							;Note: 2 = 2k by 1k. Is not available on this card.		BRA.S		@FinishVirtual@oneKBy512		MOVE.B		#sRsrcVV1kx512, sRsrcD3	;3 = 1k by 512 virtual@FinishVirtual		_DisposPtr				;Get rid of SPRAMRecord		MOVEA.L		spBlockA1, A0		;put spslot pointer in A0		MOVE.B		seSlot(SEBlockA2), spSlot(spBlockA1)		MOVE.B		#0, spExtDev(spBlockA1)		MOVE.B		sRsrcD3, spID(spBlockA1)	;deletes 24 bit resource		_sRsrcInfo		_sDeleteSRTRec		ADDI.B		#k32QDOffset, sRsrcD3		MOVE.L		#0, spsPointer(spBlockA1)		MOVE.B		sRsrcD3, spID(spBlockA1)	;enable 32 bit resource		MOVE.L		#0, spParamData(spBlockA1)		_InsertSRTRec		CMPI.W		#0, spRefNum(spBlockA1)		;0=not startup device		BEQ.S		@goodexit		CLR.L		-(SP)		_GetGDevice		MOVE.L		(SP)+, A0		;get the gDevice handle		BEQ.S		@sErrExit		; llsm 12/6/91 added		MOVE.L		(A0), A0		MOVE.L		gdPMap(A0), A0		;correct gDevice info if		MOVE.L		(A0), A0		;start-up device		ADDI.L		#1024, D4		;Add 32 byte offset to video base - ts 12/17/90		MOVE.L		D4, pmBaseAddr(A0)	;D4 IS BASE ADDRESS@goodExit; Are we in Bartlett? If so fix the gray stuff.		MOVE.B		seSlot(SEBlockA2), spSlot(spBlockA1)		MOVE.L		#sizeSPRAMRec, D0		_NewPtr		,SYS, CLEAR		;Allocate an SPRAMRec		MOVE.L		A0, spResult(spBlockA1)		MOVE.L		spBlockA1, A0		_sReadPRAMRec		MOVE.L		spResult(spBlockA1), A0		MOVE.B		yVendorUse4(A0), sRsrcD3	;Get Actual monitor resource		_DisposPtr				;Get rid of SPRAMRecord		CMP.B		#sRsrcBartlett, sRsrcD3		; Is this Bartlett?		BNE.S		@SkipOut			; If No, skip.		MOVEM.L		A0/D0-D1, -(SP)		CLR.L		D0		MOVE.B		yVendorUse5(A0), D0	;Get Gray/Color bit		CLR.L		-(SP)		_GetGDevice		MOVE.L		(SP)+, A0		;get the gDevice handle		MOVE.L		(A0), A0		MOVE.W		gdFlags(A0), D1		;correct gDevice info if		LSR.B		#1, D0		AND.W		#1, D0		AND.W		#$FFFE, D1		ADD.W		D0, D1		MOVE.W		D1, gdFlags(A0)		MOVEM.L		(SP)+, A0/D0-D1@SkipOut		MOVE.W		#1, D1		BRA.S		@exit		; llsm 12/6/91 added@sErrExit					; llsm 12/6/91 added		MOVE.W		#kError, D1	; llsm 12/6/91 added@exit		MOVE.W		D1, seStatus(SEBlockA2)		MOVE.L		spBlockA1, A0		_DisposPtr		MOVEM.L		(SP)+, A0-A3/D0-D4		RTS_EndsSinitRec	EQU		*		ENDWITH_VendorInfo	OSLstEntry	vendorId, _vendorId		OSLstEntry	revLevel, _revLevel		OSLstEntry	partNum, _partNum		DatLstEntry	endOfList, 0_vendorId	DC.L		'XCEED Technology, Inc', 0_revLevel	myRevLev_partNum	DC.L		'0369', 0;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~;sResourceList;DESCRIPTION:;	List of sResources -- all devices supported and their depths.;DECLARATION:;	N/A.;ARGUMENTS:;	N/A.;EXAMPLE:;	N/A.;HISTORY:;	121490	ts	Add "_sRsrc6x4Video32";~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~_sRsrc6x4Video	OSLstEntry	sRsrcType, _VideoType		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneBitMode		OSLstEntry	TwoBitMode, _TwoBitMode		OSLstEntry	FourBitMode, _FourBitMode		OSLstEntry	EightBitMode, _EightBitMode		DatLstEntry	endOfList, 0_sRsrcVGA	OSLstEntry	sRsrcType, _VideoType		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneVGAMode		OSLstEntry	TwoBitMode, _TwoVGAMode		OSLstEntry	FourBitMode, _FourVGAMode		OSLstEntry	EightBitMode, _EightVGAMode		DatLstEntry	endOfList, 0_sRsrcPortrait	OSLstEntry	sRsrcType, _VideoType		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OnePortMode		OSLstEntry	TwoBitMode, _TwoPortMode		OSLstEntry	FourBitMode, _FourPortMode		DatLstEntry	endOfList, 0_sRsrcBartlett	OSLstEntry	sRsrcType, _VideoType		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneBartMode		OSLstEntry	TwoBitMode, _TwoBartMode		OSLstEntry	FourBitMode, _FourBartMode		OSLstEntry	EightBitMode, _EightBartMode		DatLstEntry	endOfList, 0_sRsrcVV1kx1k	OSLstEntry	sRsrcType, _VideoType		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneV1kx1kMode		OSLstEntry	TwoBitMode, _TwoV1kx1kMode		OSLstEntry	FourBitMode, _FourV1kx1kMode		DatLstEntry	endOfList, 0_sRsrcVV1kx512	OSLstEntry	sRsrcType, _VideoType		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneV1kx512Mode		OSLstEntry	TwoBitMode, _TwoV1kx512Mode		OSLstEntry	FourBitMode, _FourV1kx512Mode		OSLstEntry	EightBitMode, _EightV1kx512Mode		DatLstEntry	endOfList, 0_sRsrctwelve	OSLstEntry	sRsrcType, _VideoType	;rb new table		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneTweMode		OSLstEntry	TwoBitMode, _TwoTweMode		OSLstEntry	FourBitMode, _FourTweMode		OSLstEntry	EightBitMode, _EightTweMode		DatLstEntry	endOfList, 0_sRsrc8x6	OSLstEntry	sRsrcType, _VideoType	;rb new table		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _One8x6Mode		OSLstEntry	TwoBitMode, _Two8x6Mode		OSLstEntry	FourBitMode, _Four8x6Mode		DatLstEntry	endOfList, 0_sRsrc832x624	OSLstEntry	sRsrcType, _VideoType	;rb new table		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _One832x624Mode		OSLstEntry	TwoBitMode, _Two832x624Mode		OSLstEntry	FourBitMode, _Four832x624Mode		DatLstEntry	endOfList, 0_sRsrc1x7	OSLstEntry	sRsrcType, _VideoType	;rb new table		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _One1x7Mode		OSLstEntry	TwoBitMode, _Two1x7Mode		OSLstEntry	FourBitMode, _Four1x7Mode		DatLstEntry	endOfList, 0_sRsrc6x4Video32	OSLstEntry	sRsrcType, _VideoType			OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneBitMode		OSLstEntry	TwoBitMode, _TwoBitMode		OSLstEntry	FourBitMode, _FourBitMode		OSLstEntry	EightBitMode, _EightBitMode		DatLstEntry	endOfList, 0_sRsrcVGA32	OSLstEntry	sRsrcType, _VideoType		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneVGAMode		OSLstEntry	TwoBitMode, _TwoVGAMode		OSLstEntry	FourBitMode, _FourVGAMode		OSLstEntry	EightBitMode, _EightVGAMode		DatLstEntry	endOfList, 0_sRsrcPortrait32	OSLstEntry	sRsrcType, _VideoType			OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF			DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit			DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)			OSLstEntry	MinorBaseOS, _MinorBase			OSLstEntry	MinorLength, _MinorLength			OSLstEntry	OneBitMode, _OnePortMode			OSLstEntry	TwoBitMode, _TwoPortMode			OSLstEntry	FourBitMode, _FourPortMode			DatLstEntry	endOfList, 0_sRsrcBartlett32	OSLstEntry	sRsrcType, _VideoType			OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF			DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit			DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)			OSLstEntry	MinorBaseOS, _MinorBase			OSLstEntry	MinorLength, _MinorLength			OSLstEntry	OneBitMode, _OneBartMode			OSLstEntry	TwoBitMode, _TwoBartMode			OSLstEntry	FourBitMode, _FourBartMode			OSLstEntry	EightBitMode, _EightBartMode			DatLstEntry	endOfList, 0_sRsrcVV1kx1k32	OSLstEntry	sRsrcType, _VideoType		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneV1kx1kMode		OSLstEntry	TwoBitMode, _TwoV1kx1kMode		OSLstEntry	FourBitMode, _FourV1kx1kMode		DatLstEntry	endOfList, 0_sRsrcVV1kx51232	OSLstEntry	sRsrcType, _VideoType			OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN			OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE			OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF			DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit			DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)			OSLstEntry	MinorBaseOS, _MinorBase			OSLstEntry	MinorLength, _MinorLength			OSLstEntry	OneBitMode, _OneV1kx512Mode			OSLstEntry	TwoBitMode, _TwoV1kx512Mode			OSLstEntry	FourBitMode, _FourV1kx512Mode			OSLstEntry	EightBitMode, _EightV1kx512Mode			DatLstEntry	endOfList, 0_sRsrctwelveQ32	OSLstEntry	sRsrcType, _VideoType	;rb new table		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit 		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _OneTweMode		OSLstEntry	TwoBitMode, _TwoTweMode		OSLstEntry	FourBitMode, _FourTweMode		OSLstEntry	EightBitMode, _EightTweMode		DatLstEntry	endOfList, 0_sRsrc8x6Q32	OSLstEntry	sRsrcType, _VideoType	;rb new table		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit 		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _One8x6Mode		OSLstEntry	TwoBitMode, _Two8x6Mode		OSLstEntry	FourBitMode, _Four8x6Mode		DatLstEntry	endOfList, 0_sRsrc832x624Q32	OSLstEntry	sRsrcType, _VideoType	;rb new table		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _One832x624Mode		OSLstEntry	TwoBitMode, _Two832x624Mode		OSLstEntry	FourBitMode, _Four832x624Mode		DatLstEntry	endOfList, 0_sRsrc1x7Q32	OSLstEntry	sRsrcType, _VideoType	;rb new table		OSLstEntry	sRsrcName, _VideoName	IF &DriverOnChip THEN		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir	ELSE		OSLstEntry	sRsrcLoadRec, _dLoadRec	ENDIF		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)		OSLstEntry	MinorBaseOS, _MinorBase		OSLstEntry	MinorLength, _MinorLength		OSLstEntry	OneBitMode, _One1x7Mode		OSLstEntry	TwoBitMode, _Two1x7Mode		OSLstEntry	FourBitMode, _Four1x7Mode		DatLstEntry	endOfList, 0_VideoType		DC.W		catDisplay, typVideo		DC.W		drSwApple			;<DrvrSw>		DC.W		kColor8DeviceID			;<DrvrHw>_VideoName	DC.L		'XCEED Color 30HRª', 0	IF &DriverOnChip THEN_VidDrvrDir	OSLstEntry	sMacOS68020, _sMacOS68020		DatLstEntry	endOfList, 0_sMacOS68020	DC.L		_End020Drvr-_sMacOS68020		INCLUDE		'theDriverBin.a'		; include binary driver								; TODO: disassemble and integrate this_End020Drvr	EQU		*	ELSE		INCLUDE		'369Loader.a'	ENDIF_MinorBase	DC.L		$0000				; this just seems to work_MinorLength	DC.L		512*1024			; 512K; --------------------------------------------------------------------------------------------; One-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_OneBitMode	OSLstEntry	mVidParams, _OneVidParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_OneVidParams	DC.L		_EndOneVParams-_OneVidParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,480,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		1				; PixelSize is 1 bits		DC.W		1				; 1 component		DC.W		1				; component size is 1 bit		DC.L		0				; defPlaneBytes_EndOneVParams	EQU		*; --------------------------------------------------------------------------------------------; Two-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_TwoBitMode	OSLstEntry	mVidParams, _TwoVidParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_TwoVidParams	DC.L		_EndTwoVParams-_TwoVidParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,480,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		2				; PixelSize is 2 bits		DC.W		1				; 1 components		DC.W		2				; component size is 2 bits		DC.L		0				; defPlaneBytes_EndTwoVParams	EQU		*; --------------------------------------------------------------------------------------------; Four-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_FourBitMode	OSLstEntry	mVidParams, _FourVidParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_FourVidParams	DC.L		_EndFourVParams-_FourVidParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,480,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		4				; PixelSize is 4 bits		DC.W		1				; 1 components in color		DC.W		4				; component size is 4 bits		DC.L		0				; defPlaneBytes_EndFourVParams	EQU		*; --------------------------------------------------------------------------------------------; Eight-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_EightBitMode	OSLstEntry	mVidParams, _EightVidParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_EightVidParams	DC.L		_EndEightVParams-_EightVidParams; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,480,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		8				; PixelSize is 8 bits		DC.W		1				; 1 components in color		DC.W		8				; component size is 8 bits		DC.L		0				; defPlaneBytes_EndEightVParams EQU		*; --------------------------------------------------------------------------------------------; One-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_OneVGAMode	OSLstEntry	mVidParams, _OneVGAParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_OneVGAParams	DC.L		_EndOneVGAParams-_OneVGAParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,480,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		1				; PixelSize is 1 bits		DC.W		1				; 1 component		DC.W		1				; component size is 1 bit		DC.L		0				; defPlaneBytes_EndOneVGAParams	EQU		*; --------------------------------------------------------------------------------------------; Two-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_TwoVGAMode	OSLstEntry	mVidParams, _TwoVGAParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_TwoVGAParams	DC.L		_EndTwoVGAParams-_TwoVGAParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,480,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		2				; PixelSize is 2 bits		DC.W		1				; 1 components		DC.W		2				; component size is 2 bits		DC.L		0				; defPlaneBytes_EndTwoVGAParams	EQU		*; --------------------------------------------------------------------------------------------; Four-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_FourVGAMode	OSLstEntry	mVidParams, _FourVGAParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_FourVGAParams	DC.L		_EndFourVGAParams-_FourVGAParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,480,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		4				; PixelSize is 4 bits		DC.W		1				; 1 components in color		DC.W		4				; component size is 4 bits		DC.L		0				; defPlaneBytes_EndFourVGAParams	EQU		*; --------------------------------------------------------------------------------------------; Eight-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_EightVGAMode	OSLstEntry	mVidParams, _EightVGAParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_EightVGAParams	DC.L		_EndEightVGAParams-_EightVGAParams; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,480,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		8				; PixelSize is 8 bits		DC.W		1				; 1 components in color		DC.W		8				; component size is 8 bits		DC.L		0				; defPlaneBytes_EndEightVGAParams EQU		*; --------------------------------------------------------------------------------------------; One-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_OnePortMode	OSLstEntry	mVidParams, _OnePortParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_OnePortParams	DC.L		_EndOnePortParams-_OnePortParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,871,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		1				; PixelSize is 1 bits		DC.W		1				; 1 component		DC.W		1				; component size is 1 bit		DC.L		0				; defPlaneBytes_EndOnePortParams	EQU		*; --------------------------------------------------------------------------------------------; Two-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_TwoPortMode	OSLstEntry	mVidParams, _TwoPortParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_TwoPortParams	DC.L		_EndTwoPortParams-_TwoPortParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,871,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		2				; PixelSize is 2 bits		DC.W		1				; 1 components		DC.W		2				; component size is 2 bits		DC.L		0				; defPlaneBytes_EndTwoPortParams	EQU		*; --------------------------------------------------------------------------------------------; Four-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_FourPortMode	OSLstEntry	mVidParams, _FourPortParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_FourPortParams	DC.L		_EndFourPortParams-_FourPortParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,871,640			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		4				; PixelSize is 4 bits		DC.W		1				; 1 components in color		DC.W		4				; component size is 4 bits		DC.L		0				; defPlaneBytes_EndFourPortParams	EQU		*; --------------------------------------------------------------------------------------------; One-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_OneBartMode	OSLstEntry	mVidParams, _OneBartParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_OneBartParams		DC.L		_EndOneBartParams-_OneBartParams	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,342,512			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		1				; PixelSize is 1 bits			DC.W		1				; 1 component			DC.W		1				; component size is 1 bit			DC.L		0				; defPlaneBytes_EndOneBartParams	EQU		*; --------------------------------------------------------------------------------------------; Two-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_TwoBartMode	OSLstEntry	mVidParams, _TwoBartParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_TwoBartParams		DC.L		_EndTwoBartParams-_TwoBartParams	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,342,512			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		2				; PixelSize is 2 bits			DC.W		1				; 1 components			DC.W		2				; component size is 2 bits			DC.L		0				; defPlaneBytes_EndTwoBartParams	EQU		*; --------------------------------------------------------------------------------------------; Four-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_FourBartMode	OSLstEntry	mVidParams, _FourBartParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_FourBartParams		DC.L		_EndFourBartParams-_FourBartParams	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,342,512			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		4				; PixelSize is 4 bits			DC.W		1				; 1 components in color			DC.W		4				; component size is 4 bits			DC.L		0				; defPlaneBytes_EndFourBartParams	EQU		*; --------------------------------------------------------------------------------------------; Eight-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_EightBartMode	OSLstEntry	mVidParams, _EightBartParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_EightBartParams	DC.L		_EndEightBartParams-_EightBartParams; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,342,512			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		8				; PixelSize is 8 bits			DC.W		1				; 1 components in color			DC.W		8				; component size is 8 bits			DC.L		0				; defPlaneBytes_EndEightBartParams	EQU		*; --------------------------------------------------------------------------------------------; One-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_OneV1kx1kMode	OSLstEntry	mVidParams, _OneV1kx1kParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_OneV1kx1kParams	DC.L		_EndOneV1kx1kVParams-_OneV1kx1kParams	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes/2			; rowbytes			DC.W		0,0,1023,1024			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		1				; PixelSize is 1 bits			DC.W		1				; 1 component			DC.W		1				; component size is 1 bit			DC.L		0				; defPlaneBytes_EndOneV1kx1kVParams	EQU		*; --------------------------------------------------------------------------------------------; Two-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_TwoV1kx1kMode	OSLstEntry	mVidParams, _TwoV1kx1kParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_TwoV1kx1kParams	DC.L		_EndTwoV1kx1kVParams-_TwoV1kx1kParams	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes/2			; rowbytes			DC.W		0,0,1023,1024			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		2				; PixelSize is 2 bits			DC.W		1				; 1 components			DC.W		2				; component size is 2 bits			DC.L		0				; defPlaneBytes_EndTwoV1kx1kVParams	EQU		*; --------------------------------------------------------------------------------------------; Four-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_FourV1kx1kMode	OSLstEntry	mVidParams, _FourV1kx1kParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_FourV1kx1kParams	DC.L		_EndFourV1kx1kVParams-_FourV1kx1kParams	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes/2			; rowbytes			DC.W		0,0,1023,1024			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		4				; PixelSize is 4 bits			DC.W		1				; 1 components in color			DC.W		4				; component size is 4 bits			DC.L		0				; defPlaneBytes_EndFourV1kx1kVParams	EQU		*; --------------------------------------------------------------------------------------------; One-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_OneV1kx512Mode	OSLstEntry	mVidParams, _OneV1kx512Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_OneV1kx512Params	DC.L		_EndOneV1kx512VParams-_OneV1kx512Params	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,511,1024			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		1				; PixelSize is 1 bits			DC.W		1				; 1 component			DC.W		1				; component size is 1 bit			DC.L		0				; defPlaneBytes_EndOneV1kx512VParams	EQU		*; --------------------------------------------------------------------------------------------; Two-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_TwoV1kx512Mode	OSLstEntry	mVidParams, _TwoV1kx512Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_TwoV1kx512Params	DC.L		_EndTwoV1kx512VParams-_TwoV1kx512Params	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,511,1024			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		2				; PixelSize is 2 bits			DC.W		1				; 1 components			DC.W		2				; component size is 2 bits			DC.L		0				; defPlaneBytes_EndTwoV1kx512VParams	EQU		*; --------------------------------------------------------------------------------------------; Four-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_FourV1kx512Mode	OSLstEntry	mVidParams, _FourV1kx512Params			DatLstEntry	mPageCnt, 1			DatLstEntry	mDevType, 0			; 0 is CLUT Type device			DatLstEntry	endOfList, 0_FourV1kx512Params	DC.L		_EndFourV1kx512VParams-_FourV1kx512Params	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,511,1024			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		4				; PixelSize is 4 bits			DC.W		1				; 1 components in color			DC.W		4				; component size is 4 bits			DC.L		0				; defPlaneBytes_EndFourV1kx512VParams	EQU		*; --------------------------------------------------------------------------------------------; Eight-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_EightV1kx512Mode	OSLstEntry	mVidParams, _EightV1kx512Params			DatLstEntry	mPageCnt, 1			DatLstEntry	mDevType, 0			; 0 is CLUT Type device			DatLstEntry	endOfList, 0_EightV1kx512Params	DC.L		_EndEightV1kx512VParams-_EightV1kx512Params	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,511,1024			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		8				; PixelSize is 4 bits			DC.W		1				; 1 components in color			DC.W		8				; component size is 4 bits			DC.L		0				; defPlaneBytes_EndEightV1kx512VParams	EQU		*; --------------------------------------------------------------------------------------------;rb One-bits-per-pixel parameter list   new rez; --------------------------------------------------------------------------------------------_OneTweMode	OSLstEntry	mVidParams, _OneTweParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_OneTweParams	DC.L		_EndOneTweParams-_OneTweParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,384,512			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		1				; PixelSize is 1 bits		DC.W		1				; 1 component		DC.W		1				; component size is 1 bit		DC.L		0				; defPlaneBytes_EndOneTweParams	EQU		*; --------------------------------------------------------------------------------------------;rb Two-bits-per-pixel parameter list	new rez; --------------------------------------------------------------------------------------------_TwoTweMode	OSLstEntry	mVidParams, _TwoTweParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_TwoTweParams	DC.L		_EndTwoTweParams-_TwoTweParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,384,512			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		2				; PixelSize is 2 bits		DC.W		1				; 1 components		DC.W		2				; component size is 2 bits		DC.L		0				; defPlaneBytes_EndTwoTweParams	EQU		*; --------------------------------------------------------------------------------------------;rb Four-bits-per-pixel parameter list	for the new rez; --------------------------------------------------------------------------------------------_FourTweMode	OSLstEntry	mVidParams, _FourTweParams		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_FourTweParams	DC.L		_EndFourTweParams-_FourTweParams	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes			; rowbytes		DC.W		0,0,384,512			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		4				; PixelSize is 4 bits		DC.W		1				; 1 components in color		DC.W		4				; component size is 4 bits		DC.L		0				; defPlaneBytes_EndFourTweParams	EQU		*; --------------------------------------------------------------------------------------------; Eight-bits-per-pixel parameter list; --------------------------------------------------------------------------------------------_EightTweMode	OSLstEntry	mVidParams, _EightTweParams			DatLstEntry	mPageCnt, 1			DatLstEntry	mDevType, 0			; 0 is CLUT Type device			DatLstEntry	endOfList, 0_EightTweParams	DC.L	_EndEightTweParams-_EightTweParams	; Physical block size			DC.L		kMyBaseOffset			; base offset for start of screen memory			DC.W		kMyRowBytes			; rowbytes			DC.W		0,0,384,512			; bounds (top,left,bottom,right)			DC.W		0				; version			DC.W		0				; packType (indicates to use default)			DC.L		0				; packSize (reserved for future use)			DC.W		72,0				; horizontal pixels per inch			DC.W		72,0				; vertical pixels per inch			DC.W		0				; pixel type is chunky			DC.W		8				; PixelSize is 4 bits			DC.W		1				; 1 components in color			DC.W		8				; component size is 4 bits			DC.L		0				; defPlaneBytes_EndEightTweParams	EQU		*; --------------------------------------------------------------------------------------------;rb One-bits-per-pixel parameter list   new rez; --------------------------------------------------------------------------------------------_One8x6Mode	OSLstEntry	mVidParams, _One8x6Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_One8x6Params	DC.L		_EndOne8x6Params-_One8x6Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,600,800			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		1				; PixelSize is 1 bits		DC.W		1				; 1 component		DC.W		1				; component size is 1 bit		DC.L		0				; defPlaneBytes_EndOne8x6Params	EQU		*; --------------------------------------------------------------------------------------------;rb Two-bits-per-pixel parameter list	new rez; --------------------------------------------------------------------------------------------_Two8x6Mode	OSLstEntry	mVidParams, _Two8x6Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_Two8x6Params	DC.L		_EndTwo8x6Params-_Two8x6Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,600,800			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		2				; PixelSize is 2 bits		DC.W		1				; 1 components		DC.W		2				; component size is 2 bits		DC.L		0				; defPlaneBytes_EndTwo8x6Params	EQU		*; --------------------------------------------------------------------------------------------;rb Four-bits-per-pixel parameter list	for the new rez; --------------------------------------------------------------------------------------------_Four8x6Mode	OSLstEntry	mVidParams, _Four8x6Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_Four8x6Params	DC.L		_EndFour8x6Params-_Four8x6Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,600,800			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		4				; PixelSize is 4 bits		DC.W		1				; 1 components in color		DC.W		4				; component size is 4 bits		DC.L		0				; defPlaneBytes_EndFour8x6Params	EQU		*; --------------------------------------------------------------------------------------------;rb One-bits-per-pixel parameter list   new rez; --------------------------------------------------------------------------------------------_One832x624Mode	OSLstEntry	mVidParams, _One832x624Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_One832x624Params	DC.L	_EndOne832x624Params-_One832x624Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,624,832			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		1				; PixelSize is 1 bits		DC.W		1				; 1 component		DC.W		1				; component size is 1 bit		DC.L		0				; defPlaneBytes_EndOne832x624Params	EQU		*; --------------------------------------------------------------------------------------------;rb Two-bits-per-pixel parameter list	new rez; --------------------------------------------------------------------------------------------_Two832x624Mode	OSLstEntry	mVidParams, _Two832x624Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_Two832x624Params	DC.L	_EndTwo832x624Params-_Two832x624Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,624,832			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		2				; PixelSize is 2 bits		DC.W		1				; 1 components		DC.W		2				; component size is 2 bits		DC.L		0				; defPlaneBytes_EndTwo832x624Params	EQU		*; --------------------------------------------------------------------------------------------;rb Four-bits-per-pixel parameter list	for the new rez; --------------------------------------------------------------------------------------------_Four832x624Mode	OSLstEntry	mVidParams, _Four832x624Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_Four832x624Params	DC.L		_EndFour832x624Params-_Four832x624Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,624,832			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		4				; PixelSize is 4 bits		DC.W		1				; 1 components in color		DC.W		4				; component size is 4 bits		DC.L		0				; defPlaneBytes_EndFour832x624Params	EQU		*; --------------------------------------------------------------------------------------------;rb NOTE 32 One-bits-per-pixel parameter list   new rez; --------------------------------------------------------------------------------------------_One1x7Mode	OSLstEntry	mVidParams, _One1x7Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_One1x7Params	DC.L		_EndOne1x7Params-_One1x7Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,768,1024			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		1				; PixelSize is 1 bits		DC.W		1				; 1 component		DC.W		1				; component size is 1 bit		DC.L		0				; defPlaneBytes_EndOne1x7Params	EQU		*; --------------------------------------------------------------------------------------------;rb Two-bits-per-pixel parameter list	new rez; --------------------------------------------------------------------------------------------_Two1x7Mode	OSLstEntry	mVidParams, _Two1x7Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_Two1x7Params	DC.L		_EndTwo1x7Params-_Two1x7Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,768,1024			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		2				; PixelSize is 2 bits		DC.W		1				; 1 components		DC.W		2				; component size is 2 bits		DC.L		0				; defPlaneBytes_EndTwo1x7Params	EQU		*; --------------------------------------------------------------------------------------------;rb Four-bits-per-pixel parameter list	for the new rez; --------------------------------------------------------------------------------------------_Four1x7Mode	OSLstEntry	mVidParams, _Four1x7Params		DatLstEntry	mPageCnt, 1		DatLstEntry	mDevType, 0			; 0 is CLUT Type device		DatLstEntry	endOfList, 0_Four1x7Params	DC.L		_EndFour1x7Params-_Four1x7Params	; Physical block size		DC.L		kMyBaseOffset			; base offset for start of screen memory		DC.W		kMyRowBytes/2			; rowbytes		DC.W		0,0,768,1024			; bounds (top,left,bottom,right)		DC.W		0				; version		DC.W		0				; packType (indicates to use default)		DC.L		0				; packSize (reserved for future use)		DC.W		72,0				; horizontal pixels per inch		DC.W		72,0				; vertical pixels per inch		DC.W		0				; pixel type is chunky		DC.W		4				; PixelSize is 4 bits		DC.W		1				; 1 components in color		DC.W		4				; component size is 4 bits		DC.L		0				; defPlaneBytes_EndFour1x7Params	EQU		*		; --------------------------------------------------------------------------------------------; Fill memory from here to Header Block at end of ROM with $FF; --------------------------------------------------------------------------------------------		DCB.B		(kROMSize-191)-(*-VideoDeclROM), $FF; --------------------------------------------------------------------------------------------; FORMAT/HEADER BLOCK; --------------------------------------------------------------------------------------------		ORG	kROMSize - 208;	fhBlock.fhBlockSize;------------------------------------------------------------------;rb NOTE 26  Resolution Table;------------------------------------------------------------------		STRING PASCAL		DC.B	'Apple 12inch  ',0			;rb NOTE 36		DC.B	134		DC.B	'Apple 16inch  ',0			;rb each string must be 14 char		DC.B	138		DC.B	'Apple Portrait',0		DC.B	130		DC.B	'640x480       ',0		DC.B	128		DC.B	'640x480 (VGA) ',0		DC.B	129		DC.B	'800x600 (56Hz)',0		DC.B	135		DC.B	'800x600 (60Hz)',0		DC.B	136		DC.B	'800x600 (72Hz)',0		DC.B	137		DC.B	'832x624       ',0		DC.B	138		DC.B	'1024x768      ',0		DC.B	139		DC.B	'Internal      ',0		DC.B	131		DC.B	11				;rb this is how many there is		STRING C		DC.L	(_sRsrcDir-*) ** $00FFFFFF; Ordinarily, the ROMSize is the same as the CodeSize.  If the code can go in the;	8K or 32K ROM, though, they are different in the 32K ROM.		DC.L	kCodeSize		;rb to reflect NOTE 8 (369Includes)		DC.L	0			; CRC patched by crcPatch, an MPW tool		DC.B	kMyROMVersion		; ROM Revision Level (1..9)		DC.B	appleFormat		; ROMEqu		DC.L	testPattern		; ROMEqu		DC.B	0			; Reserved;		DC.B	$E1			; Bytelane 0 (C&D 8-6)	THIS IS FOR THE NUBUS SURRAGATE	TECHNIQUE		DC.B	$B4			; Bytelane 2 (C&D 8-6)	THIS IS REAL		ENDP		END
+		GBLA	&DriverOnChip
+&DriverOnChip	SETA	1
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;369Color.a
+;DESCRIPTION:
+;	This is the driver file for video board 369 XCEED SE/306-48.
+;	Code Name: Bart
+;	Product Name: Micron XCEED Color 30ª
+;MAKEINFO:
+;	Run BinHex, choose "Application->Upload" on the 369Color.d file ~
+;	and name the file 369Color.text.
+;		asm 369Color.a
+;		link 369Color.a.o -ss 64400 -o 369Color.crc
+;		crcPatch 369Color.crc
+;		Data 369Color.crc 369Color.d
+;VERSION:
+;	Version 1.2	August 22, 1990	Laura Lorraine Shaffer Mills
+;	Version 1.3a3	January 2, 1991 Tom Stamm
+;	Copyright Micron Technology, Inc. 1990/1991.
+;	All Rights Reserved.
+;HISTORY:
+;	A0.2	cb	(02/06/88) changed _DoVBLTask to indirect jump thru jVBLTask.
+;	A0.3	cb	Indexed SetEntries/GetEntries Fixed.
+;	A0.4	cb	Fixed Gamma and Grayscreen.
+;	080089	cb	Created.
+;	061590	llsm	Changed version number from 1.0 to 1.1 (PageMaker fix). 
+;	082290	llsm	Changed Rev. 1.1 to 1.2; ROM revision from 1 to 2.
+;	120390	ts	Change Rev. 1.2 to 1.3a1; Add changes for Maverick Chip.  ~
+;			Change the start address offset for each screen depth.
+;	121290	ts	Put in register transformations for Maverick.
+;	121390	ts	Put in new register transformations for Maverick.
+;	121490	ts	Add logic in primary init and add seconadary init ~
+;			for the smiley mac.
+;	121890	ts	Add resources for Virtual Video.
+;	010291	ts	Set the offset to the next row down for virtual ~
+;			video.
+;	011591	ts	Add resourses for VGA, Portrait and Bartlett
+;	062091	ts	Add new portrait numbers for Maverick.
+;	112591	llsm	Changed board number 281 to 369.  Added Hungarian notation.
+;	112691	llsm	Changed ROM revision level from 2 to 3; made constant in ~
+;			the include file.
+;	112791	llsm	Put the clock into the External register.
+;	010292	llsm	Changed from 64K to 256K ROM.
+;	011492	llsm	Change from Maverick to Gambler, with G300 bit (in ModesA ~
+;			register) inverted.
+;	011692	llsm	The Debug Select bits in ModesB register changed from ~
+;			3 to 0.
+;	052793	rb	The start of the HR series after 2 months of
+;			of work. Isn't life grand??
+;			Check seperate notebook for changes.
+
+
+;NOTES:
+;	1.	Released original revision 1.
+;		June 15, 1990 Released revision 1 (PageMaker).
+;		August 22, 1990 Released revision 2 (SetInterrupt).
+;
+;	2.	HARDWARE/SOFTWARE INTERFACE INFORMATION
+;
+;	MODE REGISTER is at address sE0000 (write-only)
+;	bits 24:25	set 1, 2, 4, or 8 bit mode (values 0, 1, 2, 3 respectively)
+;	bit  26		1 enables interrupts, 0 disables interrupts
+;	bit  27		1 clears interrupts disregarding bits 0:2
+;			0 clears interrupts and uses information in bits 0:2
+;
+;	CLUT WRITE ADDRESS REGISTER is at address sC0000 (write-only)
+;	bits 0:7	set the starting CLUT entry to write (0-255)
+;			subsequent writes to the CLUT DATA REGISTER set the RGB component
+;			values in the CLUT table starting at the entry specified.
+;
+;	CLUT READ ADDRESS REGISTER is at address sC000C write-only)
+;	bits 0:7	set the starting CLUT entry to read from (0-255)
+;			subsequent reads of the CLUT DATA REGISTER get the RGB component
+;			values in the CLUT table starting at the entry specified.
+;
+;	CLUT DATA REGISTER is at address sC0004 (read/write)
+;	bits 0:7	contain the RGB component data.  The first read/write acts on the
+;			red component, followed by the green and then the blue.
+;			Subsequent accesses get/set data for the next CLUT entry, etc.
+;
+;	CLUT ADDRESS MASK REGISTER is at address sC0008 (write-only)
+;	bits 0:7	select the address lines valid for the current mode selection
+;			use $01, $03, $0F, $FF for 1, 2, 4, and 8 bit modes respectively
+;
+;	3.	To use the 32K ROM, put this code in the last 1/4 or the ROM -- ~
+;		fill the rest with F's.  The code is ~
+;		DCB.B (24*1024)-(*-VideoDeclROM), $FF.
+;	4.	The siZER program has an error where it writes into vendorUse4 when ~
+;		it should be in vendorUse3 (the only time vendorUse3 should be ~
+;		written is when the monitor is changed by the user by the Monitor ~
+;		Extension or siZER).  I'm saving 4 into 6 as well so I can ~
+;		determine when it gets screwed up.
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		TITLE		'Board 369 Driver (XCEED SE/306-48)'
+		OPT		ALL
+		STRING		C
+		MACHINE		MC68020
+		CASE		OFF
+		BLANKS		ON
+		PRINT		OFF
+
+		INCLUDE	'QuickEqu.a'
+		INCLUDE	'SysEqu.a'
+		INCLUDE	'ROMEqu.a'
+		INCLUDE	'Traps.a'
+		INCLUDE	'Syserr.a'
+		INCLUDE	'VideoEqu.a'
+		INCLUDE	'SlotEqu.A'
+
+		MACRO
+&lbl		MyRevLev
+;&lbl		DC.L		'Rev. 1.1', 0		;llsm 6/15/90
+;&lbl		DC.L		'Rev. 1.2', 0		;llsm 8/22/90
+;&lbl		DC.L		'Rev. 1.3a3', 0		;ts 12/18/90
+&lbl		DC.L		'Rev. 2.0', 0		;rb 5/21/93
+		ENDM
+
+		MACRO
+&lbl		MyBoard
+&lbl		DC.L		'XCEED Color 30HRª V2.0', 0
+		ENDM
+
+		PRINT		ON
+
+		INCLUDE		'369includes.a'
+; --------------------------------------------------------------------------------------------
+; MAIN
+; --------------------------------------------------------------------------------------------
+VideoDeclROM	MAIN
+
+; To use the 32K ROM, put this stuff in the last 1/4 -- fill the rest with F's.
+; The code is DCB.B (24*1024)-(*-VideoDeclROM), $FF
+;rb NOTE 7
+		DCB.B		(16*1024)-(*-VideoDeclROM), $FF	;rb NOTE 7
+
+_sRsrcDir	OSLstEntry	sRsrcBoard, _sRsrcBoard
+		OSLstEntry	sRsrc6x4Video, _sRsrc6x4Video		; 24-bit 6x4 monitor
+		OSLstEntry	sRsrcVGA, _sRsrcVGA			; 24-bit 6x4 VGA					(ts 1/15/91)
+		OSLstEntry	sRsrcPortrait, _sRsrcPortrait		; 24-bit Portrait					(ts 1/15/91)
+		OSLstEntry	sRsrcBartlett, _sRsrcBartlett		; 24-bit Bartlett (512x342)			(ts 1/15/91)
+		OSLstEntry	sRsrcVV1kx1k, _sRsrcVV1kx1k		; 24-bit 1kx1k monitor
+		OSLstEntry	sRsrcVV1kx512, _sRsrcVV1kx512		; 24-bit 1kx512 monitor
+		OSLstEntry	sRsrctwelve, _sRsrctwelve			;r.b. new rez svga
+		OSLstEntry	sRsrcfifty, _sRsrc8x6			;r.b. NOTE 28 new rez svga
+		OSLstEntry	sRsrcsixty, _sRsrc8x6			;r.b. NOTE 28 new rez svga
+		OSLstEntry	sRsrcseventy, _sRsrc8x6			;r.b. NOTE 28 new rez svga
+		OSLstEntry	sRsrc832x624, _sRsrc832x624		;r.b new rez apple 16inch
+		OSLstEntry	sRsrc1x7, _sRsrc1x7			;rb NOTE 28
+		OSLstEntry	sRsrc6x4Video32, _sRsrc6x4Video32	; 32-bit 6x4 monitor
+		OSLstEntry	sRsrcVGA32, _sRsrcVGA32			; 32-bit 6x4 VGA					(ts 1/15/91)
+		OSLstEntry	sRsrcPortrait32, _sRsrcPortrait32	; 32-bit Portrait					(ts 1/15/91)
+		OSLstEntry	sRsrcBartlett32, _sRsrcBartlett32	; 32-bit Bartlett (512x342)			(ts 1/15/91)
+		OSLstEntry	sRsrcVV1kx1k32, _sRsrcVV1kx1k32		; 32-bit 1kx1k monitor
+		OSLstEntry	sRsrcVV1kx51232, _sRsrcVV1kx51232	; 32-bit 1kx512 monitor
+		OSLstEntry	sRsrctwelveQ32, _sRsrctwelveQ32		;r.b. new rez svga
+		OSLstEntry	sRsrcfiftyQ32, _sRsrc8x6Q32		;r.b. new rez svga
+		OSLstEntry	sRsrcsixtyQ32, _sRsrc8x6Q32		;r.b. new rez svga
+		OSLstEntry	sRsrcseventyQ32, _sRsrc8x6Q32		;r.b. new rez svga
+		OSLstEntry	sRsrc832x624Q32, _sRsrc832x624Q32	;r.b new rez apple 16inch
+		OSLstEntry	sRsrc1x7Q32, _sRsrc1x7Q32		;rb NOTE 28
+		DatLstEntry	EndOfList, 0
+
+_sRsrcBoard	OSLstEntry	sRsrcType, _BoardType
+		OSLstEntry	sRsrcName, _BoardName
+		OSLstEntry	sRsrcIcon, _BoardIcon
+		DatLstEntry	BoardId, kColor8BoardID
+		OSLstEntry	PrimaryInit, _sPInitRec
+		OSLstEntry	VendorInfo, _VendorInfo
+		OSLstEntry	secondaryInit, _sSInitRec
+		DatLstEntry	EndOfList, 0
+
+_BoardType	DC.W		catBoard, typBoard, 0, 0
+_BoardName	myBoard
+
+_BoardIcon	DC.W		$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF,$FFFF
+		DC.W		$FFFF,$FFFF,$BFA3,$E3FF,$9FC3,$C3F9,$8FEB,$CFF9
+		DC.W		$87F3,$CFE1,$A3FB,$FFE3,$81FF,$FF81,$88FF,$FF89
+		DC.W		$807F,$FE01,$A23F,$FE23,$801F,$F801,$888F,$F889
+		DC.W		$800F,$F001,$A23F,$FA23,$803F,$FC01,$88FF,$FE89
+		DC.W		$80FF,$FF01,$A3FF,$FFA3,$83FB,$DFC1,$8FFB,$CFE9
+		DC.W		$8FE3,$C7F1,$BFE3,$E3FB,$BF83,$C1FD,$FF8B,$C8FF
+		DC.W		$FE03,$C07F,$FE23,$E23F,$F803,$C01F,$FFFF,$FFFF
+
+
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;PrimaryInit
+;DESCRIPTION:
+;	PrimaryInit _sPInitRec is an sExecBlock (C&D 8-3).
+;DECLARATION:
+;	_sPInitProc;
+;ARGUMENTS:
+;	On Entry	A0 = Ptr to SEBlock.
+;	On Exit		seStatus field = +1 if successful init.
+;			seStatus field = -1 if error during init.
+;EXAMPLE:
+;	N/A.
+;HISTORY:
+;	112691	llsm	Named registers.
+;	112791	llsm	Put clock value in External register.
+;	120291	llsm	Changed all ExtMode and ModesB Maverick values.  The IRE ~
+;			bit moved from ExtMode to ModesB.  ExtMode now has the ~
+;			monitor and depth (1-bit mode).
+;	120691	llsm	Can exit with error if no cable or Bartlett.
+;	121191	llsm	Changed Maverick numbers.  Color table was set wrong, was ~
+;			using ClutReadOffs instead of ClutDataRegOffs.
+;	121291	llsm	Write vendorUse4 into vendorUse6 as well, to fix siZER ~
+;			error (writes to 4 instead of 3).  If 4 and 6 are ~
+;			different, then move 4 to 3 and 6 to 4.
+;	121391	llsm	Changed the Maverick numbers for Portrait to remove white ~
+;			line on right when Gamma Contrast was turned down.
+;	121791	llsm	Changed Maverick numbers for everything -- Rev. F?
+;	121891	llsm	Changed Maverick numbers.
+;	121991		Changed Maverick numbers for Bartlett.
+;	122091	llsm	Put VFPorch value for 6x4 virtual here.  Was in SetMode, ~
+;			but doesn't depend on mode.
+;	011492	llsm	Change from Maverick to Gambler, with G300 bit (in ModesA ~
+;			register) inverted.
+;	011692	llsm	The Debug Select bits in ModesB register changed from ~
+;			3 to 0 ($601 -> $001; $600 ->$000; $620 ->$020).
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+_sPInitRec
+		DC.L		_EndsPinitRec - _sPInitRec	; Block Size
+		DC.B		sExec2				; code
+		DC.B		sCPU68020			; revision level
+		DC.W		0				; reserved
+		DC.L		_sPInitProc - *			; offset to code
+
+		WITH		seBlock, spBlock, SPRAMRecord
+_sPInitProc
+
+sRsrcD3		SET	D3
+spBlockA1	SET	A1
+SEBlockA3	SET	A3
+BaseA2		SET	A2
+
+; MOVE.L		D4, -(SP)
+; MOVE.L		#$56780000, D4
+; MARK_PROGRESS
+; MOVE.L		(SP)+, D4
+; MOVE.L		D4, -(SP)
+; MOVE.L		#$56560000, D4
+; STORE_ERROR
+; MOVE.L		(SP)+, D4
+
+		MOVEM.L		A0-A4/D0-D6, -(SP)
+
+		MOVE.W		#1, seStatus(A0)		; successful initialization
+		MOVE.L		A0, SEBlockA3			; save param block {A0 is destroyed}
+
+; --------------------------------------------------------------------------------------------
+; Turn the slot number into a 32-bit base address.
+; --------------------------------------------------------------------------------------------
+		MOVEQ		#0, D0			; D0 <- 00000000
+		MOVE.B		seSlot(SEBlockA3), D0	; D0 <- 0000000s
+		OR.W		#$F0, D0		; D0 <- 000000Fs
+		SWAP		D0			; D0 <- 00Fs0000
+		LSL.L		#8, D0			; D0 <- Fs000000
+		MOVE.L		D0, BaseA2		; A2 <- Base address to the slot.
+
+; --------------------------------------------------------------------------------------------
+; Reset the hardware -- Set mode to one bit per pixel and Disable video.								;
+; --------------------------------------------------------------------------------------------
+		MOVE.B		#true32b, D0
+		_SwapMMUMode					;Set to 32-bit mode
+
+; --------------------------------------------------------------------------------------------
+; 2/26/91	t.s.	Added
+;	Cable Test:
+;	1)	Turn on video.
+;	2)	Fill frame buffer with "C0".
+;	3)	Write Cable Detect regs.
+;	4)	Check External reg in loop.  Loop until composite video bits goes high.
+;			C1 - No Monitor Cable
+;			C9 - Has Monitor Cable
+; --------------------------------------------------------------------------------------------
+;	1)	Turn on video and Write Cable Detect regs.
+;			Init Maverick Mode A Registers
+; ### Make this into a table INIT_MAVERICK InitMaverick
+; llsm 12/6/91 Changed ALL of these Maverick numbers to match the 6x4 monitor.
+; llsm 12/6/91 Turn the video on LAST
+
+; Init Maverick Mode A Registers (ts 12/3/90)
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0
+		MOVE.L		#$C0E00000, kMavAHFPorch(A0)	; $03F
+		MOVE.L		#$E0E00000, kMavAHSync(A0)	; $01F
+		MOVE.L		#$BDE00000, kMavAHBPorch(A0)	; $042 ($043) llsm 12/18/91
+		MOVE.L		#$32E00000, kMavAHLine(A0)	; $0CD ($0CE) llsm 12/18/91
+		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $002
+		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $002
+		MOVE.L		#$D9E00000, kMavAVBPorch(A0)	; $026
+		MOVE.L		#$20C00000, kMavAFrameLines(A0)	; $1DF
+		MOVE.L		#$8DC00000, kMavAHSync22(A0)	; $172
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$15E00000, kMavARowMSBs(A0)	; $0EA
+		MOVE.L		#$FF400000, kMavAModesA(A0)	; $500 ($580) llsm 1/14/92
+		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001
+		MOVE.L		#$F4E00000, kMavAFS2(A0)	; $00B ($00A) llsm 12/18/91
+		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000
+		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000
+
+; Init Maverick Mode B Registers (ts 12/3/90)
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$FCE00000, kMavBExtMode(A0)		; $003 1-bit 6x4
+		MOVE.L		#$FBE00000, kMavBRefreshCnt(A0)		; $004
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 llsm 1/16/92
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#k30Clock6x4, kMavBExternal(A0)	; llsm 11/27/91
+
+
+
+
+
+
+		MOVE.L		#$FEE00000, kMavBModesB(A0)		; $001 llsm 1/16/92
+
+		_SwapMMUMode			; back to original mode llsm 12/6/91
+		CABLE_DETECT			; D0 = 0 if cable llsm 12/6/91
+		MOVE.L		D0, D2
+
+		MOVE.B		#true32b, D0	; llsm 12/6/91
+		_SwapMMUMode			; Set to 32-bit mode llsm 12/6/91
+		MOVE.L		D0, D6		; llsm 12/6/91
+
+		CMP.L	#0, D2			; llsm 12/6/91
+		BEQ.S	@IsExternalVideo	; llsm 12/6/91
+; Otherwise, is either Bartlett or no monitor found.
+
+; --------------------------------------------------------------------------------------------
+;	No Cable
+; --------------------------------------------------------------------------------------------
+		MOVE.L		kMavBExternal(A0), D3
+		ANDI.L		#kExtRd_Bartlett_Bit, D3
+		BEQ.W		@Bartlett
+
+		MOVE.W		#$0, sRsrcD3		;No monitor valid.
+
+		MOVE.L		D6, D0		; llsm 12/6/91
+		_SwapMMUMode			; back to original mode llsm 12/6/91
+		BRA.W		@pErrExit	; leave with error llsm 12/6/91 added
+
+
+@IsExternalVideo
+; --------------------------------------------------------------------------------------------
+; The following logic set D3 to the proper monitor type.
+; ts 1/30/91 Added
+; --------------------------------------------------------------------------------------------
+		CLR.L		D1
+		MOVEQ		#spBlockSize+8, D0
+		_NewPtr		,SYS, CLEAR			;spBlockPtr
+		MOVEA.L		A0, spBlockA1
+
+		MOVE.B		seSlot(SEBlockA3), spSlot(spBlockA1)
+		MOVE.L		#sizeSPRAMRec, D0
+		_NewPtr		,SYS, CLEAR			;Allocate an SPRAMRec
+		MOVE.L		A0, spResult(spBlockA1)
+
+		MOVE.L		spBlockA1, A0
+		_sReadPRAMRec
+
+;$$$$ llsm 12/12/91 Fix siZER.
+; To fix siZER error, saved vendorUse4 (overwritten by siZER) in vendorUse6 (unused).
+;	If 4 and 6 don't match, copy 4 to 3 and 6 to 4.
+		MOVEM.L		A0-A1/D0-D1, -(SP)
+		CLR.L		D0
+		CLR.L		D1
+		MOVE.L		spResult(spBlockA1), A0
+		MOVE.B		yVendorUse4(A0), D0
+		MOVE.B		yVendorUse6(A0), D1
+		CMP.B		D0, D1
+		BEQ.S		@stseven
+		MOVE.B			D0, yVendorUse3(A0)	; copy 4 to 3
+		MOVE.B			D1, yVendorUse4(A0)	; copy 6 to 4
+		MOVE.L		A0, spsPointer(spBlockA1)
+		MOVE.L		spBlockA1, A0
+		_sPutPRAMRec
+		_sReadPRAMRec
+
+@stseven	MOVEM.L		(SP)+, A0-A1/D0-D1
+;$$$$ llsm 12/12/91 Fix siZER.
+
+		MOVE.L		spResult(spBlockA1), A0
+		MOVE.B		yVendorUse2(A0), D5		;Virtual Mode
+		MOVE.B		yVendorUse3(A0), sRsrcD3	;Phys. Monitor
+		_DisposPtr
+		
+		MOVE.L		spBlockA1, A0
+		_DisposPtr
+
+		CMPI.B		#sRsrcTwelve, sRsrcD3		;rb NOTE 40
+		BLE.S		@nothere
+		MOVE.B		#0, D5
+		
+		
+@nothere	CMPI.B		#sRsrc6x4Video, sRsrcD3
+		BEQ.S		@SixByFour
+		CMPI.B		#sRsrcVGA, sRsrcD3
+		BEQ.W		@SixByFourVGA
+		CMPI.B		#sRsrcPortrait, sRsrcD3
+		BEQ.W		@Portrait
+		CMPI.B		#sRsrcsixty, sRsrcD3		;rb NOTE 6
+		BEQ.W		@eighttwo
+		CMPI.B		#sRsrcfifty, sRsrcD3		;rb NOTE 29
+		BEQ.W		@eightone
+		CMPI.B		#sRsrctwelve, sRsrcD3		;rb NOTE 29
+		BEQ.W		@twelve
+		CMPI.B		#sRsrcseventy, sRsrcD3		;rb NOTE 29
+		BEQ.W		@eightthree
+		CMPI.B		#sRsrc832x624, sRsrcD3
+		BEQ.W		@eightstuff
+		CMPI.B		#sRsrc1x7, sRsrcD3		;rb NOTE 29
+		BEQ.W		@onexseven
+
+; Doesn't match anything, so force it to something.
+		MOVE.B		#sRsrc6x4Video, sRsrcD3
+; --------------------------------------------------------------------------------------------
+;	Init Maverick to 6x4 monitor
+; --------------------------------------------------------------------------------------------
+@SixByFour
+;		MOVE.B		#sRsrc6x4Video, sRsrcD3		;D3 to point to 24-bit 6x4 resource
+
+; Init Maverick Mode A Registers (ts 12/3/90)
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0
+		MOVE.L		#$C0E00000, kMavAHFPorch(A0)	; $03F
+		MOVE.L		#$E0E00000, kMavAHSync(A0)	; $01F
+		MOVE.L		#$BDE00000, kMavAHBPorch(A0)	; $042 ($043) llsm 12/18/91
+		MOVE.L		#$32E00000, kMavAHLine(A0)	; $0CD ($0CE) llsm 12/18/91
+		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $002
+		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $002
+		MOVE.L		#$D9E00000, kMavAVBPorch(A0)	; $026
+		MOVE.L		#$20C00000, kMavAFrameLines(A0)	; $1DF
+		MOVE.L		#$8DC00000, kMavAHSync22(A0)	; $172
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$15E00000, kMavARowMSBs(A0)	; $0EA
+		MOVE.L		#$FF400000, kMavAModesA(A0)	; $500 ($580) llsm 1/14/92
+		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001
+		MOVE.L		#$F4E00000, kMavAFS2(A0)	; $00B ($00A) llsm 12/18/91
+		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000
+		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000
+
+; Init Maverick Mode B Registers (ts 12/3/90)
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$FCE00000, kMavBExtMode(A0)		; $003 1-bit 6x4
+		MOVE.L		#$FBE00000, kMavBRefreshCnt(A0)		; $004
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 llsm 1/16/92
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#k30Clock6x4, kMavBExternal(A0)	; llsm 11/27/91
+		BRA.W		@setOneBitMode
+
+; --------------------------------------------------------------------------------------------
+;	Init Maverick to 6x4 VGA monitor
+; ts 1/24/91	added
+; --------------------------------------------------------------------------------------------
+@SixByFourVGA
+;		MOVE.B		#sRsrcVGA, sRsrcD3		;D3 to point to 24-bit 6x4 VGA resource
+
+; Init Maverick Mode A Registers
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0
+		MOVE.L		#$F0E00000, kMavAHFPorch(A0)	; $00F
+		MOVE.L		#$D0E00000, kMavAHSync(A0)	; $02F
+		MOVE.L		#$EFE00000, kMavAHBPorch(A0)	; $010
+		MOVE.L		#$11E00000, kMavAHLine(A0)	; $0EE
+		MOVE.L		#$FAE00000, kMavAVFPorch(A0)	; $005
+		MOVE.L		#$FEE00000, kMavAVSync(A0)	; $001
+		MOVE.L		#$E1E00000, kMavAVBPorch(A0)	; $01E
+		MOVE.L		#$20C00000, kMavAFrameLines(A0)	; $1DF
+		MOVE.L		#$CFC00000, kMavAHSync22(A0)	; $130
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$12E00000, kMavARowMSBs(A0)	; $0ED
+		MOVE.L		#$FF400000, kMavAModesA(A0)	; $500 ($580) llsm 1/14/92
+		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001
+		MOVE.L		#$F4E00000, kMavAFS2(A0)	; $00B
+		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000
+		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000
+
+; Init Maverick Mode B Registers (ts 12/3/90)
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$FCE00000, kMavBExtMode(A0)		; $003 1-bit 6x4VGA
+		MOVE.L		#$FBE00000, kMavBRefreshCnt(A0)		; $004
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 llsm 1/16/92
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#k25Clock6x4VGA, kMavBExternal(A0)	; llsm 12/18/91
+		BRA.W		@setOneBitMode
+
+; --------------------------------------------------------------------------------------------
+;	Init Maverick to Portrait monitor
+; ts 1/24/91	added
+; --------------------------------------------------------------------------------------------
+@Portrait
+;		MOVE.B		#sRsrcPortrait, sRsrcD3		;D3 to point to 24-bit Portrait resource
+
+; Init Maverick Mode A Registers
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0
+		MOVE.L		#$F0E00000, kMavAHFPorch(A0)	; $00F
+		MOVE.L		#$ECE00000, kMavAHSync(A0)	; $013
+		MOVE.L		#$F0E00000, kMavAHBPorch(A0)	; $00F ($010)
+		MOVE.L		#$92E00000, kMavAHLine(A0)	; $06D ($06C)
+		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $002
+		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $002
+		MOVE.L		#$D6E00000, kMavAVBPorch(A0)	; $029 ($023)
+		MOVE.L		#$99800000, kMavAFrameLines(A0)	; $366
+		MOVE.L		#$FEE00000, kMavAHSync22(A0)	; $001
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$16C00000, kMavARowMSBs(A0)	; $1E9 ($1EC)
+		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429 ($4A9) llsm 1/14/92
+		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001 ($004) llsm 12/18/91
+		MOVE.L		#$F9E00000, kMavAFS2(A0)	; $006 ($005)
+		MOVE.L		#$7FE00000, kMavAReqToTransDly(A0)	; $080
+		MOVE.L		#$7FE00000, kMavATransToReqDly(A0)	; $080
+
+; Init Maverick Mode B Registers
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$F4E00000, kMavBExtMode(A0)		; $00B 1-bit Portrait
+		MOVE.L		#$FAE00000, kMavBRefreshCnt(A0)		; $005
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 llsm 1/16/92
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#k57ClockPortrait, kMavBExternal(A0)	; llsm 11/27/91
+		BRA.W		@setOneBitMode
+; --------------------------------------------------------------------------------------------
+; --------------------------------------------------------------------------------------------
+;rb NOTE 39	Init Maverick to 12inch monitor   for svga
+; --------------------------------------------------------------------------------------------
+@twelve
+;		MOVE.B		#sRsrctwelve, sRsrcD3		;D3 to point to 24-bit 8x6 resource
+
+; Init Maverick Mode A Registers )
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0		;rb NOTE 9
+		MOVE.L		#$EFE00000, kMavAHFPorch(A0)	; $010
+		MOVE.L		#$E7E00000, kMavAHSync(A0)	; $018
+		MOVE.L		#$D5E00000, kMavAHBPorch(A0)	; $2a
+		MOVE.L		#$43E00000, kMavAHLine(A0)	; $BC
+		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $2
+		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $2
+		MOVE.L		#$EDE00000, kMavAVBPorch(A0)	; $12
+		MOVE.L		#$80C00000, kMavAFrameLines(A0)	; $17F
+		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $0
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$0BE00000, kMavARowMSBs(A0)	; $F4
+		MOVE.L		#$FF400000, kMavAModesA(A0)	; $500
+		MOVE.L		#$FDE00000, kMavAFS1(A0)	; $002
+		MOVE.L		#$FBE00000, kMavAFS2(A0)	; $004 
+		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $00
+		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $00
+
+; Init Maverick Mode B Registers 
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$FEE00000, kMavBExtMode(A0)		; $001
+		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#ktwelveClock, kMavBExternal(A0)	;1
+		BRA.W		@setOneBitMode
+
+; --------------------------------------------------------------------------------------------
+; --------------------------------------------------------------------------------------------
+;rb NOTE 30	Init Maverick to 8x6@56HZ monitor   for svga
+; --------------------------------------------------------------------------------------------
+@eightone
+;		MOVE.B		#sRsrc8x6V56, sRsrcD3		;D3 to point to 24-bit 8x6 resource
+
+; Init Maverick Mode A Registers )
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0		;rb NOTE 9
+		MOVE.L		#$E7E00000, kMavAHFPorch(A0)	; $018
+		MOVE.L		#$DBE00000, kMavAHSync(A0)	; $024
+		MOVE.L		#$7DE00000, kMavAHBPorch(A0)	; $82
+		MOVE.L		#$E7C00000, kMavAHLine(A0)	; $118
+		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $2
+		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $2
+		MOVE.L		#$F5E00000, kMavAVBPorch(A0)	; $A
+		MOVE.L		#$A9A00000, kMavAFrameLines(A0)	; $256
+		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$06C00000, kMavARowMSBs(A0)	; $1F9
+		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429
+		MOVE.L		#$FDE00000, kMavAFS1(A0)	; $002
+		MOVE.L		#$FDE00000, kMavAFS2(A0)	; $002 
+		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000
+		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000
+
+; Init Maverick Mode B Registers 
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$FEE00000, kMavBExtMode(A0)		; $001
+		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$FDE00000, kMavBNS(A0)			; $002
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#kfiftyClock, kMavBExternal(A0)	;
+		BRA.W		@setOneBitMode
+
+; --------------------------------------------------------------------------------------------
+; --------------------------------------------------------------------------------------------
+;rb NOTE 30	Init Maverick to 8x6@60Hz monitor   for svga
+; --------------------------------------------------------------------------------------------
+@eighttwo
+
+; Init Maverick Mode A Registers )
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0		;rb NOTE 9
+		MOVE.L		#$EDE00000, kMavAHFPorch(A0)	; $012
+		MOVE.L		#$EBE00000, kMavAHSync(A0)	; $014
+		MOVE.L		#$D8E00000, kMavAHBPorch(A0)	; $27
+		MOVE.L		#$80E00000, kMavAHLine(A0)	; $7F
+		MOVE.L		#$FDE00000, kMavAVFPorch(A0)	; $2
+		MOVE.L		#$FDE00000, kMavAVSync(A0)	; $2
+		MOVE.L		#$EFE00000, kMavAVBPorch(A0)	; $10
+		MOVE.L		#$A9A00000, kMavAFrameLines(A0)	; $256
+		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$09C00000, kMavARowMSBs(A0)	; $1F6
+		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429
+		MOVE.L		#$F7E00000, kMavAFS1(A0)	; $008
+		MOVE.L		#$F5E00000, kMavAFS2(A0)	; $00A 
+		MOVE.L		#$7FE00000, kMavAReqToTransDly(A0)	; $080
+		MOVE.L		#$7FE00000, kMavATransToReqDly(A0)	; $080
+
+; Init Maverick Mode B Registers 
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$F7E00000, kMavBExtMode(A0)		; $008
+		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#ksixtyClock, kMavBExternal(A0)	;F
+		BRA.W		@setOneBitMode
+
+; --------------------------------------------------------------------------------------------
+; --------------------------------------------------------------------------------------------
+;rb NOTE 30	Init Maverick to 8x6@72Hz monitor   for svga
+; --------------------------------------------------------------------------------------------
+@eightthree
+
+; Init Maverick Mode A Registers )
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0		;rb NOTE 9
+		MOVE.L		#$E0E00000, kMavAHFPorch(A0)	; $01F
+		MOVE.L		#$DBE00000, kMavAHSync(A0)	; $024
+		MOVE.L		#$B9E00000, kMavAHBPorch(A0)	; $46
+		MOVE.L		#$A3E00000, kMavAHLine(A0)	; $5C
+		MOVE.L		#$F5E00000, kMavAVFPorch(A0)	; $A
+		MOVE.L		#$F5E00000, kMavAVSync(A0)	; $A
+		MOVE.L		#$E7E00000, kMavAVBPorch(A0)	; $18
+		MOVE.L		#$A9A00000, kMavAFrameLines(A0)	; $256
+		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$15C00000, kMavARowMSBs(A0)	; $1EA
+		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429
+		MOVE.L		#$F9E00000, kMavAFS1(A0)	; $006
+		MOVE.L		#$F7E00000, kMavAFS2(A0)	; $008 
+		MOVE.L		#$8FE00000, kMavAReqToTransDly(A0)	; $070
+		MOVE.L		#$8FE00000, kMavATransToReqDly(A0)	; $070
+
+; Init Maverick Mode B Registers 
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$F7E00000, kMavBExtMode(A0)		; $008
+		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#kseventyClock, kMavBExternal(A0)	;
+		BRA.W		@setOneBitMode
+
+
+; --------------------------------------------------------------------------------------------
+;rb  NOTE 6	Init Maverick to 832x624 monitor
+; --------------------------------------------------------------------------------------------
+@eightstuff
+;		MOVE.B		#sRsrc832x624, sRsrcD3		;D3 to point to 24-bit 832x624 resource
+
+; Init Maverick Mode A Registers 
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0
+		MOVE.L		#$F3E00000, kMavAHFPorch(A0)	; $00C
+		MOVE.L		#$EDE00000, kMavAHSync(A0)	; $012
+		MOVE.L		#$B0E00000, kMavAHBPorch(A0)	; $04F 
+		MOVE.L		#$7FE00000, kMavAHLine(A0)	; $080 
+		MOVE.L		#$FBE00000, kMavAVFPorch(A0)	; $004
+		MOVE.L		#$F7E00000, kMavAVSync(A0)	; $008
+		MOVE.L		#$EFE00000, kMavAVBPorch(A0)	; $010
+		MOVE.L		#$92A00000, kMavAFrameLines(A0)	; $26D
+		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$0DC00000, kMavARowMSBs(A0)	; $1f2
+		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429 
+		MOVE.L		#$FDE00000, kMavAFS1(A0)	; $002
+		MOVE.L		#$FBE00000, kMavAFS2(A0)	; $004 
+		MOVE.L		#$7FE00000, kMavAReqToTransDly(A0)	; $080
+		MOVE.L		#$7FE00000, kMavATransToReqDly(A0)	; $080
+
+; Init Maverick Mode B Registers
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$F7E00000, kMavBExtMode(A0)		; $008 
+		MOVE.L		#$F9E00000, kMavBRefreshCnt(A0)		; $006*
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EDE00000, kMavBNS(A0)			; $012*
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#k832x624Clock, kMavBExternal(A0)	; 
+		BRA.W		@setOneBitMode
+
+; --------------------------------------------------------------------------------------------
+;rb  NOTE 30	Init Maverick to 1024x768 monitor
+; --------------------------------------------------------------------------------------------
+@onexseven
+;		MOVE.B		#sRsrc1x7, sRsrcD3		;D3 to point to 24-bit 832x624 resource
+
+; Init Maverick Mode A Registers 
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0
+		MOVE.L		#$E2E00000, kMavAHFPorch(A0)	; $01D
+		MOVE.L		#$DFE00000, kMavAHSync(A0)	; $020
+		MOVE.L		#$C9E00000, kMavAHBPorch(A0)	; $036 
+		MOVE.L		#$5CE00000, kMavAHLine(A0)	; $0A3 
+		MOVE.L		#$FBE00000, kMavAVFPorch(A0)	; $004
+		MOVE.L		#$FBE00000, kMavAVSync(A0)	; $004
+		MOVE.L		#$EDE00000, kMavAVBPorch(A0)	; $012
+		MOVE.L		#$01A00000, kMavAFrameLines(A0)	; $2FE
+		MOVE.L		#$FFE00000, kMavAHSync22(A0)	; $000
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$0CC00000, kMavARowMSBs(A0)	; $1F3
+		MOVE.L		#$D6600000, kMavAModesA(A0)	; $429 
+		MOVE.L		#$F9E00000, kMavAFS1(A0)	; $006
+		MOVE.L		#$F7E00000, kMavAFS2(A0)	; $008 
+		MOVE.L		#$7FE00000, kMavAReqToTransDly(A0)	; $080
+		MOVE.L		#$7FE00000, kMavATransToReqDly(A0)	; $080
+
+; Init Maverick Mode B Registers
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$F7E00000, kMavBExtMode(A0)		; $008 
+		MOVE.L		#$EBE00000, kMavBRefreshCnt(A0)		; $014
+		MOVE.L		#$FFE00000, kMavBModesB(A0)		; $000 
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$F3E00000, kMavBNS(A0)			; $00C
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#k1x7Clock, kMavBExternal(A0)	; 
+		BRA.W		@setOneBitMode
+
+; --------------------------------------------------------------------------------------------
+;	Init Maverick to Bartlett monitor (ts 1/16/91)
+; --------------------------------------------------------------------------------------------
+@Bartlett
+; --------------------------------------------------------------------------------------------
+;Disable slot $E
+		MOVEM.L		A0/D0-D1, -(SP)
+
+		CLR.L		D1
+		MOVEQ		#spBlockSize+8, D0
+		_NewPtr		,SYS, CLEAR		;spBlockPtr
+
+		MOVE.B		#$E, spSlot(A0)
+		MOVE.B		#0, spExtDev(A0)
+		MOVE.B		#$01, spID(A0)
+		_sDeleteSRTRec
+		MOVE.B		#$E, spSlot(A0)
+		MOVE.B		#0, spExtDev(A0)
+		MOVE.B		#$80, spID(A0)
+		_sDeleteSRTRec
+		MOVE.B		#$E, spSlot(A0)
+		MOVE.B		#0, spExtDev(A0)
+		MOVE.B		#$A0, spID(A0)
+		_sDeleteSRTRec
+		MOVE.B		#$E, spSlot(A0)
+		MOVE.B		#0, spExtDev(A0)
+		MOVE.B		#$FF, spID(A0)
+		_sDeleteSRTRec
+
+		_DisposPtr
+
+; Blacken the Internal video frame buffer
+
+		MOVE.L	#$FEE08040, A0			; 7/2/91 ts Base Address for internal video
+		MOVE.L	#$1560, D0			; 7/2/91 ts The Counter
+@Blacken						; 7/2/91 ts
+		MOVE.L	#$FFFFFFFF, (A0)+		; 7/2/91 ts blacken word
+		DBF	D0, @Blacken			; 7/2/91 ts Done? No, Do it some more.
+
+;Force slot $9 to be Main
+		MOVE.L	#$09830983, -(SP)
+		MOVE.L	SP, A0				;BufferAddress into A0
+		MOVE.L	#$00020080, D0			;Length, Clock Address
+		_WriteXPRam
+		MOVE.L	(SP)+, D0
+
+		MOVEM.L		(SP)+, A0/D0-D1
+; --------------------------------------------------------------------------------------------
+		MOVE.B		#sRsrcBartlett, sRsrcD3		;D3 to point to 24-bit Bartlett resource
+
+; Init Maverick Mode A Registers
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeAReg, A0
+		MOVE.L		#$EBE00000, kMavAHFPorch(A0)	; $014 12/19/91
+		MOVE.L		#$C0E00000, kMavAHSync(A0)	; $03F 12/19/91
+		MOVE.L		#$F2E00000, kMavAHBPorch(A0)	; $00D 12/19/91
+		MOVE.L		#$62E00000, kMavAHLine(A0)	; $09D
+		MOVE.L		#$FBE00000, kMavAVFPorch(A0)	; $004
+		MOVE.L		#$FCE00000, kMavAVSync(A0)	; $003
+		MOVE.L		#$EEE00000, kMavAVBPorch(A0)	; $011
+		MOVE.L		#$ABC00000, kMavAFrameLines(A0)	; $154
+		MOVE.L		#$E5C00000, kMavAHSync22(A0)	; $11A
+		MOVE.L		#$FFE00000, kMavAColRow(A0)	; $000
+		MOVE.L		#$0CE00000, kMavARowMSBs(A0)	; $0F3
+		MOVE.L		#$FA400000, kMavAModesA(A0)	; $505 ($585) llsm 1/14/92
+		MOVE.L		#$FEE00000, kMavAFS1(A0)	; $001
+		MOVE.L		#$F4E00000, kMavAFS2(A0)	; $00B
+		MOVE.L		#$FFE00000, kMavAReqToTransDly(A0)	; $000
+		MOVE.L		#$FFE00000, kMavATransToReqDly(A0)	; $000
+
+; Init Maverick Mode B Registers
+		MOVE.L		BaseA2, A0			; get slot base
+		ADD.L		#kMavModeBReg, A0
+		MOVE.L		#$F0E00000, kMavBExtMode(A0)		; $00F 1-bit Bartlett
+		MOVE.L		#$F8E00000, kMavBRefreshCnt(A0)		; $007
+		MOVE.L		#$DFE00000, kMavBModesB(A0)		; $020
+		MOVE.L		#$FFE00000, kMavBZoom(A0)		; $000
+		MOVE.L		#$EFE00000, kMavBNS(A0)			; $010
+		MOVE.L		#$FFE00000, kMavBInterruptClear(A0)	; $000
+		MOVE.L		#k15ClockBartlett, kMavBExternal(A0)	; llsm 11/27/91
+		
+
+@setOneBitMode
+		MOVE.L		BaseA2, A0
+		ADD.L		#kMavClutBaseAddr, A0
+		MOVE.L		#1, kMavClutMaskRegOffs(A0)	; 1-bit mode
+
+; --------------------------------------------------------------------------------------------
+; set the color table to black and white
+; --------------------------------------------------------------------------------------------
+		MOVE		#1, D4				; go thru loop twice
+		CLR.L		D2				; first entry is black
+		CLR.L		kMavClutWriteOffs(A0)		; select entry 0
+@pinit1	
+		MOVE.L		D2, kMavClutDataRegOffs(A0)	; red llsm 12/11/91 was kMavClutReadOffs
+		MOVE.L		D2, kMavClutDataRegOffs(A0)	; green llsm 12/11/91
+		MOVE.L		D2, kMavClutDataRegOffs(A0)	; blue llsm 12/11/91
+		NOT.L		D2				; change black to white
+
+		DBRA		D4, @pinit1
+
+; --------------------------------------------------------------------------------------------
+; clear video RAM to a nice gray
+; --------------------------------------------------------------------------------------------
+		MOVE.L		BaseA2, A0
+		MOVE.L		#$AAAAAAAA, D4
+
+		CMP.B		#sRsrcPortrait, sRsrcD3
+		BEQ.S		@zeroShort2
+		CMP.B		#sRsrcfifty, sRsrcD3		;rb NOTE 11
+		BEQ.S		@zeroShort2
+		CMP.B		#sRsrcsixty, sRsrcD3		;rb NOTE 11
+		BEQ.S		@zeroShort2
+		CMP.B		#sRsrcseventy, sRsrcD3		;rb NOTE 11
+		BEQ.S		@zeroShort2
+		CMP.B		#sRsrc1x7, sRsrcD3		;rb NOTE 37
+		BEQ.S		@zeroShort2
+
+		CMP.B		#sRsrc832x624, sRsrcD3
+		BEQ.S		@zeroShort2
+		CMP.B		#1, D5				;1Kx1K virtual video
+		BEQ.S		@zeroShort2
+		MOVE.W		#kRows, D2			;D0 is rows-1
+		BRA.S		@zero0
+@zeroShort2
+		MOVE.W		#kShortRows, D2			;D0 is rows-1
+
+@zero0
+		CMP.B		#sRsrcPortrait, sRsrcD3
+		BEQ.S		@zeroShort
+		CMP.B		#sRsrcfifty, sRsrcD3		;rb NOTE 11
+		BEQ.S		@zeroShort
+		CMP.B		#sRsrcsixty, sRsrcD3		;rb NOTE 11
+		BEQ.S		@zeroShort
+		CMP.B		#sRsrcseventy, sRsrcD3		;rb NOTE 11
+		BEQ.S		@zeroShort
+		CMP.B		#sRsrc1x7, sRsrcD3		;rb NOTE 11
+		BEQ.S		@zeroShort
+		CMP.B		#sRsrc832x624, sRsrcD3
+		BEQ.S		@zeroShort
+		CMP.B		#1, D5				;1Kx1K virtual video
+		BEQ.S		@zeroShort
+		MOVE.W		#kRowlongs, D1			; number of longs in a row
+		BRA.S		@zero1
+@zeroShort
+		MOVE.W		#kShortrowlongs, D1		; number of longs in a row
+@zero1		MOVE.L		D4, (A0)+
+		DBRA		D1, @zero1
+		NOT.L		D4
+		DBRA		D2, @zero0
+
+ MOVE.L		D6, D0		; llsm 12/6/91
+		_SwapMMUMode					; back to original mode
+
+; --------------------------------------------------------------------------------------------
+; The following logic set D3 to the proper monitor type.
+; ts 12/18/90 Added
+; --------------------------------------------------------------------------------------------
+		CLR.L		D1
+		MOVEQ		#spBlockSize+8, D0
+		_NewPtr		,SYS, CLEAR		;spBlockPtr
+		MOVEA.L		A0, spBlockA1
+
+; Do we do virtual monitors?
+		MOVE.B		seSlot(SEBlockA3), spSlot(spBlockA1)
+		MOVE.L		#sizeSPRAMRec, D0
+		_NewPtr		,SYS, CLEAR		;Allocate an SPRAMRec
+		MOVE.L		A0, spResult(spBlockA1)
+
+		MOVE.L		spBlockA1, A0
+		_sReadPRAMRec
+
+;$$$$ llsm 12/12/91 Fix siZER.
+; To fix siZER error, saved vendorUse4 (overwritten by siZER) in vendorUse6 (unused).
+;	If 4 and 6 don't match, copy 4 to 3 and 6 to 4.
+		MOVEM.L		A0-A1/D0-D1, -(SP)
+		CLR.L		D0
+		CLR.L		D1
+		MOVE.L		spResult(spBlockA1), A0
+		MOVE.B		yVendorUse4(A0), D0
+		MOVE.B		yVendorUse6(A0), D1
+		CMP.B		D0, D1
+		BEQ.S		@NeverMind2
+		MOVE.B			D0, yVendorUse3(A0)	; copy 4 to 3
+		MOVE.B			D1, yVendorUse4(A0)	; copy 6 to 4
+		MOVE.L		A0, spsPointer(spBlockA1)
+		MOVE.L		spBlockA1, A0
+		_sPutPRAMRec
+		_sReadPRAMRec
+@NeverMind2
+		MOVEM.L		(SP)+, A0-A1/D0-D1
+;$$$$ llsm 12/12/91 Fix siZER.
+
+		MOVE.L		spResult(spBlockA1), A0
+
+		CMP.B		yVendorUse4(A0), sRsrcD3
+		BEQ.S		@SkipReset2
+		MOVE.B		#0, ScrnInval		; Invalidate the 'scrn' resource.
+		MOVE.B		#$80, yVendorUse1(A0)	; Two Color screen depth.
+
+		MOVE.B		yVendorUse5(A0), D0	;IRE/Gray
+		AND.B		#kVend_ColGray_Mask, D0	; Clear Gray/Color bit
+		MOVE.B		D0, yVendorUse5(A0)	;IRE/Gray
+@SkipReset2
+		MOVE.B		sRsrcD3, yVendorUse4(A0)	; Save REAL monitor type
+		MOVE.B		sRsrcD3, yVendorUse6(A0); $$$$ this fixes siZER error
+		CMP.L		#$00, sRsrcD3
+		BEQ.W		@SkipVirtual		;0 = Do Nothin
+		
+		MOVE.B		yVendorUse3(A0), D0	;rb NOTE 40
+		CMPI.B		#sRsrcTwelve, D0
+		BEQ.S		@nexstep
+		CMPI.B		#sRsrcTwelve, D0
+		BGT.W		@EscapeVirtual
+		
+@nexstep	MOVE.B		yVendorUse2(A0), D0	; Virtual?
+		BEQ.W		@SkipVirtual		;0 = Do Nothing
+
+		CMPI.B		#sRsrc6x4Video, sRsrcD3	; llsm 12/20/91
+		BNE.S		@Not6x4Virtual		; llsm 12/20/91
+		MOVE.L		BaseA2, A4		; get slot base llsm 12/20/91
+		ADD.L		#kMavModeAReg, A4	; llsm 12/20/91
+		MOVE.L		D0, -(SP)		; llsm 12/20/91
+		MOVE.B		#true32b, D0		; llsm 12/20/91
+		_SwapMMUMode				;Set to 32-bit mode llsm 12/20/91
+		MOVE.L		#$FEE00000, kMavAVFPorch(A4)	; $001 llsm 12/20/91 was in SetMode
+		_SwapMMUMode				; back to original mode llsm 12/20/91
+		MOVE.L		(SP)+, D0		; llsm 12/20/91
+@Not6x4Virtual						; llsm 12/20/91
+
+		CMP.B		#kMonitorVV1kx512, D0
+		BEQ.S		@oneKBy512
+; Adjust Maverick Registers for 1k x 1k
+		MOVE.L		BaseA2, A4		; get slot base
+		ADD.L		#kMavModeAReg, A4
+
+		MOVE.B		#true32b, D0
+		_SwapMMUMode				;Set to 32-bit mode
+
+		CMPI.B		#sRsrcBartlett, sRsrcD3
+		BEQ.S		@vBartlett
+		CMPI.B		#sRsrcTwelve, sRsrcD3
+		BEQ.S		@vmyapptwe
+
+		MOVE.L		#$0BC00000, kMavARowMSBs(A4)	; $1EB
+		MOVE.L		#$D7400000, kMavAModesA(A4)	; $528 ($5A8) llsm 1/14/92
+		BRA.S		@vContinue
+
+@vmyapptwe	MOVE.L		#$EFA00000, kMavARowMSBs(A4)	; $1F4
+		MOVE.L		#$FFA00000, kMavAColRow(A4)	; $200
+		MOVE.L		#$D7400000, kMavAModesA(A4)	; $528 ($5A8) llsm 1/14/92
+		BRA.S		@vContinue
+
+@vBartlett
+		MOVE.L		#$FFA00000, kMavAColRow(A4)	; $200
+		MOVE.L		#$0CC00000, kMavARowMSBs(A4)	; $1F3
+		MOVE.L		#$D2400000, kMavAModesA(A4)	; $52D ($5AD) llsm 1/14/92
+@vContinue
+
+		_SwapMMUMode				; back to original mode
+
+		MOVE.B		#sRsrcVV1kx1k, sRsrcD3	;1 = 1k by 1k virtual
+							;Note: 2 = 2k by 1k. Is not available on this card.
+		BRA.S		@SkipVirtual
+@oneKBy512
+		CMP.B		#sRsrcPortrait, sRsrcD3
+		BEQ.S		@EscapeVirtual
+		MOVE.B		#sRsrcVV1kx512, sRsrcD3	;3 = 1k by 512 virtual
+		BRA.S		@SkipVirtual
+@EscapeVirtual
+		MOVE.B		#0, yVendorUse2(A0)
+@SkipVirtual
+		MOVE.L		A0, spsPointer(spBlockA1)	;Write out REAL monitor type
+		MOVE.L		spBlockA1, A0
+		_sPutPRAMRec
+		MOVE.L		spsPointer(spBlockA1), A0
+		_DisposPtr
+
+; --------------------------------------------------------------------------------------------
+; The following logic deletes the "other" video resources.
+; ts 12/14/90 Added
+; --------------------------------------------------------------------------------------------
+		_sVersion
+		BNE.S		@noQD32
+	;32 bit quick draw is in ROM
+	;at this point, D3 should contain sRsrc6x4Video32
+		ADDI.B		#k32QDOffset, sRsrcD3	;D3 to point to 32-bit resource
+
+@noQD32	;no 32 bit Quick Draw in ROM
+	;at this point, D3 should contain the proper resource number.
+		MOVE.B		#kFirstMonitor, D2
+		MOVE.L		spBlockA1, A0	; llsm added 11/27/91
+@bye
+		CMP.B		D2, sRsrcD3
+		BEQ.S		@addone
+		MOVE.B		seSlot(SEBlockA3), spSlot(spBlockA1)	; llsm A1 was A0
+		MOVE.B		#0, spExtDev(spBlockA1)
+		MOVE.B		D2, spID(spBlockA1)
+		_sDeleteSRTRec
+		
+@addone		;ADDI.B		#1, D2
+		dc.l $06020001 				; TODO: remove this. This is ADDI.B explicitly in bytes
+							; otherwise ASM will optimize this to ADDQ.B 
+							; That's fine, only for the sake of verifying we can
+							; get the same output as they did 30 years ago.
+							
+		CMPI.B		#152, D2		;rb NOTE 7
+		BLE.S		@bye			;rb NOTE 23 NOTE 31
+		MOVE.W		#1, D1
+
+
+		BRA.S		@exit			; llsm 12/6/91 added
+@pErrExit						; llsm 12/6/91 added
+		MOVE.W		#kError, D1		; D1 = init fail code llsm 12/6/91 added
+		MOVE.W		D1, seStatus(SEBlockA3)	; llsm 12/6/91
+		MOVEM.L		(SP)+, A0-A4/D0-D6	; llsm 12/6/91
+		RTS					; llsm 12/6/91
+
+
+@exit
+		MOVE.W		D1, seStatus(SEBlockA3)
+		MOVEA.L		spBlockA1, A0
+		_DisposPtr
+
+		MOVEM.L		(SP)+, A0-A4/D0-D6
+
+		RTS
+
+_EndsPinitRec	EQU		*
+
+
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;SecondaryInit
+;DESCRIPTION:
+;	SecondaryInit _sSInitRec is an sExecBlock (C&D 8-3).  ~
+;	The code below attempts to implement the secondary init code as spelled ~
+;	out in Apple Computer's document "32-Bit Video Drivers - Rev 3.1".
+;DECLARATION:
+;	_sSInitProc;
+;ARGUMENTS:
+;	On Entry	A0	Ptr to seBlock.
+;	On Exit		seStatus field = +1 if successful init.
+;			seStatus field = -1 if error during init.
+;EXAMPLE:
+;	N/A.
+;HISTORY:
+;	121490	ts	Created.
+;	121790	ts	Add 32 byte offset to base video address.
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+_sSInitRec	DC.L		_EndsSinitRec - _sSInitRec	;Block Size
+		DC.B		sExec2				;code
+		DC.B		sCPU68020			;revision level
+		DC.W		0				;reserved
+		DC.L		_sSInitProc - *			;offset to code
+
+_sSInitProc
+
+sRsrcD3		SET	D3
+spBlockA1	SET	A1
+SEBlockA2	SET	A2
+
+		MOVEM.L		A0-A3/D0-D4, -(SP)
+		MOVE.L		A0, SEBlockA2		;A2 Ptr to seBlock
+
+	; build devBaseAddr from slot
+		MOVE.B		seSlot(SEBlockA2), D4
+		EXTB.L		D4
+		ROR.L		#8, D4
+		ORI.L		#$F0000000, D4		;Fs00 0000 for 32-bit mode
+
+		MOVEQ		#spBlockSize+8, D0
+		_NewPtr		,SYS, CLEAR
+		MOVEA.L		A0, spBlockA1		;A1 Ptr to spBlock
+	; determine if 32-bit Quickdraw is in ROM
+		_sVersion				;returns smSelOOBErr =-338, if no QD32
+		BNE		@goodexit
+		CMPI.L		#0, spResult(spBlockA1)
+		BGT.S		@sMgrOK			;positive spResult=qd32 here
+		BRA.W		@sErrExit		; llsm 12/6/91 added
+@sMgrOK		CMPI.L		#2, spResult(spBlockA1)
+		BEQ		@goodexit		;32QD in ROM exit
+
+@RAMsMgr
+		MOVE.W		#$AB03, D0		;32QD trap Address
+		_GetTrapAddress
+		MOVE.L		A0, D1
+		CMPI.L		#kUnimplemented, D1
+		BEQ		@goodexit
+
+; Do we do virtual monitors?
+		MOVE.B		seSlot(SEBlockA2), spSlot(spBlockA1)
+		MOVE.L		#sizeSPRAMRec, D0
+		_NewPtr		,SYS, CLEAR		;Allocate an SPRAMRec
+		MOVE.L		A0, spResult(spBlockA1)
+
+		MOVE.L		spBlockA1, A0
+		_sReadPRAMRec
+		MOVE.L		spResult(spBlockA1), A0
+
+		MOVE.B		yVendorUse4(A0), sRsrcD3	;Get Actual monitor resource
+
+		CMP.B		#sRsrcBartlett, sRsrcD3		; Is this Bartlett?
+		BNE.S		@SkipBartlett			; If No, skip.
+; kill the internal video
+		MOVE.L		SInfoPtr, A3			; Pointer to Slot info table
+		MOVE.L		$D*4(A3), $E*4(A3)		; Wipe out entry for Slot $E
+
+		MOVE.L		#$FEE08040, A3			; 7/2/91 ts Base Address for internal video
+		MOVE.L		#$1560, D0			; 7/2/91 ts The Counter
+@Blacken							; 7/2/91 ts
+		MOVE.L		#$FFFFFFFF, (A3)+		; 7/2/91 ts blacken word
+		DBF		D0, @Blacken			; 7/2/91 ts Done? No, Do it some more.
+
+@SkipBartlett
+		MOVE.B		yVendorUse2(A0), D0	;Check for virtual monitor
+		BEQ.S		@FinishVirtual		;0 = Do Nothing
+		CMP.B		#kMonitorVV1kx512, D0
+		BEQ.S		@oneKBy512
+		MOVE.B		#sRsrcVV1kx1k, sRsrcD3	;1 = 1k by 1k virtual
+							;Note: 2 = 2k by 1k. Is not available on this card.
+		BRA.S		@FinishVirtual
+@oneKBy512
+		MOVE.B		#sRsrcVV1kx512, sRsrcD3	;3 = 1k by 512 virtual
+@FinishVirtual
+		_DisposPtr				;Get rid of SPRAMRecord
+
+		MOVEA.L		spBlockA1, A0		;put spslot pointer in A0
+		MOVE.B		seSlot(SEBlockA2), spSlot(spBlockA1)
+		MOVE.B		#0, spExtDev(spBlockA1)
+		MOVE.B		sRsrcD3, spID(spBlockA1)	;deletes 24 bit resource
+		_sRsrcInfo
+		_sDeleteSRTRec
+		ADDI.B		#k32QDOffset, sRsrcD3
+		MOVE.L		#0, spsPointer(spBlockA1)
+		MOVE.B		sRsrcD3, spID(spBlockA1)	;enable 32 bit resource
+
+		MOVE.L		#0, spParamData(spBlockA1)
+		_InsertSRTRec
+
+		CMPI.W		#0, spRefNum(spBlockA1)		;0=not startup device
+		BEQ.S		@goodexit
+
+		CLR.L		-(SP)
+		_GetGDevice
+		MOVE.L		(SP)+, A0		;get the gDevice handle
+		BEQ.S		@sErrExit		; llsm 12/6/91 added
+		MOVE.L		(A0), A0
+		MOVE.L		gdPMap(A0), A0		;correct gDevice info if
+		MOVE.L		(A0), A0		;start-up device
+		ADDI.L		#1024, D4		;Add 32 byte offset to video base - ts 12/17/90
+		MOVE.L		D4, pmBaseAddr(A0)	;D4 IS BASE ADDRESS
+
+@goodExit
+; Are we in Bartlett? If so fix the gray stuff.
+		MOVE.B		seSlot(SEBlockA2), spSlot(spBlockA1)
+		MOVE.L		#sizeSPRAMRec, D0
+		_NewPtr		,SYS, CLEAR		;Allocate an SPRAMRec
+		MOVE.L		A0, spResult(spBlockA1)
+
+		MOVE.L		spBlockA1, A0
+		_sReadPRAMRec
+		MOVE.L		spResult(spBlockA1), A0
+
+		MOVE.B		yVendorUse4(A0), sRsrcD3	;Get Actual monitor resource
+		_DisposPtr				;Get rid of SPRAMRecord
+
+		CMP.B		#sRsrcBartlett, sRsrcD3		; Is this Bartlett?
+		BNE.S		@SkipOut			; If No, skip.
+
+		MOVEM.L		A0/D0-D1, -(SP)
+		CLR.L		D0
+		MOVE.B		yVendorUse5(A0), D0	;Get Gray/Color bit
+		CLR.L		-(SP)
+		_GetGDevice
+		MOVE.L		(SP)+, A0		;get the gDevice handle
+		MOVE.L		(A0), A0
+		MOVE.W		gdFlags(A0), D1		;correct gDevice info if
+		LSR.B		#1, D0
+		AND.W		#1, D0
+		AND.W		#$FFFE, D1
+		ADD.W		D0, D1
+		MOVE.W		D1, gdFlags(A0)
+
+		MOVEM.L		(SP)+, A0/D0-D1
+
+@SkipOut
+		MOVE.W		#1, D1
+
+		BRA.S		@exit		; llsm 12/6/91 added
+@sErrExit					; llsm 12/6/91 added
+		MOVE.W		#kError, D1	; llsm 12/6/91 added
+
+@exit		MOVE.W		D1, seStatus(SEBlockA2)
+		MOVE.L		spBlockA1, A0
+		_DisposPtr
+
+		MOVEM.L		(SP)+, A0-A3/D0-D4
+		RTS
+
+_EndsSinitRec	EQU		*
+		ENDWITH
+
+
+_VendorInfo	OSLstEntry	vendorId, _vendorId
+		OSLstEntry	revLevel, _revLevel
+		OSLstEntry	partNum, _partNum
+		DatLstEntry	endOfList, 0
+
+_vendorId	DC.L		'XCEED Technology, Inc', 0
+_revLevel	myRevLev
+_partNum	DC.L		'0369', 0
+
+
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;sResourceList
+;DESCRIPTION:
+;	List of sResources -- all devices supported and their depths.
+;DECLARATION:
+;	N/A.
+;ARGUMENTS:
+;	N/A.
+;EXAMPLE:
+;	N/A.
+;HISTORY:
+;	121490	ts	Add "_sRsrc6x4Video32"
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+_sRsrc6x4Video	OSLstEntry	sRsrcType, _VideoType
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneBitMode
+		OSLstEntry	TwoBitMode, _TwoBitMode
+		OSLstEntry	FourBitMode, _FourBitMode
+		OSLstEntry	EightBitMode, _EightBitMode
+		DatLstEntry	endOfList, 0
+
+_sRsrcVGA	OSLstEntry	sRsrcType, _VideoType
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneVGAMode
+		OSLstEntry	TwoBitMode, _TwoVGAMode
+		OSLstEntry	FourBitMode, _FourVGAMode
+		OSLstEntry	EightBitMode, _EightVGAMode
+		DatLstEntry	endOfList, 0
+
+_sRsrcPortrait	OSLstEntry	sRsrcType, _VideoType
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OnePortMode
+		OSLstEntry	TwoBitMode, _TwoPortMode
+		OSLstEntry	FourBitMode, _FourPortMode
+		DatLstEntry	endOfList, 0
+
+_sRsrcBartlett	OSLstEntry	sRsrcType, _VideoType
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneBartMode
+		OSLstEntry	TwoBitMode, _TwoBartMode
+		OSLstEntry	FourBitMode, _FourBartMode
+		OSLstEntry	EightBitMode, _EightBartMode
+		DatLstEntry	endOfList, 0
+
+_sRsrcVV1kx1k	OSLstEntry	sRsrcType, _VideoType
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneV1kx1kMode
+		OSLstEntry	TwoBitMode, _TwoV1kx1kMode
+		OSLstEntry	FourBitMode, _FourV1kx1kMode
+		DatLstEntry	endOfList, 0
+
+_sRsrcVV1kx512	OSLstEntry	sRsrcType, _VideoType
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneV1kx512Mode
+		OSLstEntry	TwoBitMode, _TwoV1kx512Mode
+		OSLstEntry	FourBitMode, _FourV1kx512Mode
+		OSLstEntry	EightBitMode, _EightV1kx512Mode
+		DatLstEntry	endOfList, 0
+
+_sRsrctwelve	OSLstEntry	sRsrcType, _VideoType	;rb new table
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneTweMode
+		OSLstEntry	TwoBitMode, _TwoTweMode
+		OSLstEntry	FourBitMode, _FourTweMode
+		OSLstEntry	EightBitMode, _EightTweMode
+		DatLstEntry	endOfList, 0
+_sRsrc8x6	OSLstEntry	sRsrcType, _VideoType	;rb new table
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _One8x6Mode
+		OSLstEntry	TwoBitMode, _Two8x6Mode
+		OSLstEntry	FourBitMode, _Four8x6Mode
+		DatLstEntry	endOfList, 0
+
+_sRsrc832x624	OSLstEntry	sRsrcType, _VideoType	;rb new table
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _One832x624Mode
+		OSLstEntry	TwoBitMode, _Two832x624Mode
+		OSLstEntry	FourBitMode, _Four832x624Mode
+		DatLstEntry	endOfList, 0
+_sRsrc1x7	OSLstEntry	sRsrcType, _VideoType	;rb new table
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _One1x7Mode
+		OSLstEntry	TwoBitMode, _Two1x7Mode
+		OSLstEntry	FourBitMode, _Four1x7Mode
+		DatLstEntry	endOfList, 0
+
+
+_sRsrc6x4Video32	OSLstEntry	sRsrcType, _VideoType
+			OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneBitMode
+		OSLstEntry	TwoBitMode, _TwoBitMode
+		OSLstEntry	FourBitMode, _FourBitMode
+		OSLstEntry	EightBitMode, _EightBitMode
+		DatLstEntry	endOfList, 0
+
+_sRsrcVGA32	OSLstEntry	sRsrcType, _VideoType
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneVGAMode
+		OSLstEntry	TwoBitMode, _TwoVGAMode
+		OSLstEntry	FourBitMode, _FourVGAMode
+		OSLstEntry	EightBitMode, _EightVGAMode
+		DatLstEntry	endOfList, 0
+
+_sRsrcPortrait32	OSLstEntry	sRsrcType, _VideoType
+			OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+			DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit
+			DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+			OSLstEntry	MinorBaseOS, _MinorBase
+			OSLstEntry	MinorLength, _MinorLength
+			OSLstEntry	OneBitMode, _OnePortMode
+			OSLstEntry	TwoBitMode, _TwoPortMode
+			OSLstEntry	FourBitMode, _FourPortMode
+			DatLstEntry	endOfList, 0
+
+_sRsrcBartlett32	OSLstEntry	sRsrcType, _VideoType
+			OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+			DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit
+			DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+			OSLstEntry	MinorBaseOS, _MinorBase
+			OSLstEntry	MinorLength, _MinorLength
+			OSLstEntry	OneBitMode, _OneBartMode
+			OSLstEntry	TwoBitMode, _TwoBartMode
+			OSLstEntry	FourBitMode, _FourBartMode
+			OSLstEntry	EightBitMode, _EightBartMode
+			DatLstEntry	endOfList, 0
+
+_sRsrcVV1kx1k32	OSLstEntry	sRsrcType, _VideoType
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneV1kx1kMode
+		OSLstEntry	TwoBitMode, _TwoV1kx1kMode
+		OSLstEntry	FourBitMode, _FourV1kx1kMode
+		DatLstEntry	endOfList, 0
+
+_sRsrcVV1kx51232	OSLstEntry	sRsrcType, _VideoType
+			OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+			OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+			OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+			DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit
+			DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+			OSLstEntry	MinorBaseOS, _MinorBase
+			OSLstEntry	MinorLength, _MinorLength
+			OSLstEntry	OneBitMode, _OneV1kx512Mode
+			OSLstEntry	TwoBitMode, _TwoV1kx512Mode
+			OSLstEntry	FourBitMode, _FourV1kx512Mode
+			OSLstEntry	EightBitMode, _EightV1kx512Mode
+			DatLstEntry	endOfList, 0
+_sRsrctwelveQ32	OSLstEntry	sRsrcType, _VideoType	;rb new table
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit 
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _OneTweMode
+		OSLstEntry	TwoBitMode, _TwoTweMode
+		OSLstEntry	FourBitMode, _FourTweMode
+		OSLstEntry	EightBitMode, _EightTweMode
+		DatLstEntry	endOfList, 0
+_sRsrc8x6Q32	OSLstEntry	sRsrcType, _VideoType	;rb new table
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit 
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _One8x6Mode
+		OSLstEntry	TwoBitMode, _Two8x6Mode
+		OSLstEntry	FourBitMode, _Four8x6Mode
+		DatLstEntry	endOfList, 0
+
+_sRsrc832x624Q32	OSLstEntry	sRsrcType, _VideoType	;rb new table
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _One832x624Mode
+		OSLstEntry	TwoBitMode, _Two832x624Mode
+		OSLstEntry	FourBitMode, _Four832x624Mode
+		DatLstEntry	endOfList, 0
+
+
+_sRsrc1x7Q32	OSLstEntry	sRsrcType, _VideoType	;rb new table
+		OSLstEntry	sRsrcName, _VideoName
+
+	IF &DriverOnChip THEN
+		OSLstEntry	sRsrcDrvrDir, _VidDrvrDir
+	ELSE
+		OSLstEntry	sRsrcLoadRec, _dLoadRec
+	ENDIF
+
+		DatLstEntry	sRsrcFlags, kFOpenAtStartBit + kF32BitModeBit
+		DatLstEntry	sRsrcHWDevId, 1			; Unique hardware device ID (???)
+		OSLstEntry	MinorBaseOS, _MinorBase
+		OSLstEntry	MinorLength, _MinorLength
+		OSLstEntry	OneBitMode, _One1x7Mode
+		OSLstEntry	TwoBitMode, _Two1x7Mode
+		OSLstEntry	FourBitMode, _Four1x7Mode
+		DatLstEntry	endOfList, 0
+
+_VideoType
+		DC.W		catDisplay, typVideo
+		DC.W		drSwApple			;<DrvrSw>
+		DC.W		kColor8DeviceID			;<DrvrHw>
+
+_VideoName	DC.L		'XCEED Color 30HRª', 0
+
+	IF &DriverOnChip THEN
+_VidDrvrDir	OSLstEntry	sMacOS68020, _sMacOS68020
+		DatLstEntry	endOfList, 0
+
+_sMacOS68020	DC.L		_End020Drvr-_sMacOS68020
+		INCLUDE		'theDriverBin.a'		; include binary driver
+								; TODO: disassemble and integrate this
+
+_End020Drvr	EQU		*
+	ELSE
+		INCLUDE		'369Loader.a'
+	ENDIF
+
+_MinorBase	DC.L		$0000				; this just seems to work
+_MinorLength	DC.L		512*1024			; 512K
+
+; --------------------------------------------------------------------------------------------
+; One-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_OneBitMode	OSLstEntry	mVidParams, _OneVidParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_OneVidParams	DC.L		_EndOneVParams-_OneVidParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,480,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		1				; PixelSize is 1 bits
+		DC.W		1				; 1 component
+		DC.W		1				; component size is 1 bit
+		DC.L		0				; defPlaneBytes
+_EndOneVParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Two-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_TwoBitMode	OSLstEntry	mVidParams, _TwoVidParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_TwoVidParams	DC.L		_EndTwoVParams-_TwoVidParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,480,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		2				; PixelSize is 2 bits
+		DC.W		1				; 1 components
+		DC.W		2				; component size is 2 bits
+		DC.L		0				; defPlaneBytes
+_EndTwoVParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Four-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_FourBitMode	OSLstEntry	mVidParams, _FourVidParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_FourVidParams	DC.L		_EndFourVParams-_FourVidParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,480,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		4				; PixelSize is 4 bits
+		DC.W		1				; 1 components in color
+		DC.W		4				; component size is 4 bits
+		DC.L		0				; defPlaneBytes
+_EndFourVParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Eight-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_EightBitMode	OSLstEntry	mVidParams, _EightVidParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_EightVidParams	DC.L		_EndEightVParams-_EightVidParams; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,480,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		8				; PixelSize is 8 bits
+		DC.W		1				; 1 components in color
+		DC.W		8				; component size is 8 bits
+		DC.L		0				; defPlaneBytes
+_EndEightVParams EQU		*
+
+; --------------------------------------------------------------------------------------------
+; One-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_OneVGAMode	OSLstEntry	mVidParams, _OneVGAParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_OneVGAParams	DC.L		_EndOneVGAParams-_OneVGAParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,480,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		1				; PixelSize is 1 bits
+		DC.W		1				; 1 component
+		DC.W		1				; component size is 1 bit
+		DC.L		0				; defPlaneBytes
+_EndOneVGAParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Two-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_TwoVGAMode	OSLstEntry	mVidParams, _TwoVGAParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_TwoVGAParams	DC.L		_EndTwoVGAParams-_TwoVGAParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,480,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		2				; PixelSize is 2 bits
+		DC.W		1				; 1 components
+		DC.W		2				; component size is 2 bits
+		DC.L		0				; defPlaneBytes
+_EndTwoVGAParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Four-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_FourVGAMode	OSLstEntry	mVidParams, _FourVGAParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_FourVGAParams	DC.L		_EndFourVGAParams-_FourVGAParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,480,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		4				; PixelSize is 4 bits
+		DC.W		1				; 1 components in color
+		DC.W		4				; component size is 4 bits
+		DC.L		0				; defPlaneBytes
+_EndFourVGAParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Eight-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_EightVGAMode	OSLstEntry	mVidParams, _EightVGAParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_EightVGAParams	DC.L		_EndEightVGAParams-_EightVGAParams; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,480,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		8				; PixelSize is 8 bits
+		DC.W		1				; 1 components in color
+		DC.W		8				; component size is 8 bits
+		DC.L		0				; defPlaneBytes
+_EndEightVGAParams EQU		*
+
+; --------------------------------------------------------------------------------------------
+; One-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_OnePortMode	OSLstEntry	mVidParams, _OnePortParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_OnePortParams	DC.L		_EndOnePortParams-_OnePortParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,871,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		1				; PixelSize is 1 bits
+		DC.W		1				; 1 component
+		DC.W		1				; component size is 1 bit
+		DC.L		0				; defPlaneBytes
+_EndOnePortParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Two-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_TwoPortMode	OSLstEntry	mVidParams, _TwoPortParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_TwoPortParams	DC.L		_EndTwoPortParams-_TwoPortParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,871,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		2				; PixelSize is 2 bits
+		DC.W		1				; 1 components
+		DC.W		2				; component size is 2 bits
+		DC.L		0				; defPlaneBytes
+_EndTwoPortParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Four-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_FourPortMode	OSLstEntry	mVidParams, _FourPortParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_FourPortParams	DC.L		_EndFourPortParams-_FourPortParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,871,640			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		4				; PixelSize is 4 bits
+		DC.W		1				; 1 components in color
+		DC.W		4				; component size is 4 bits
+		DC.L		0				; defPlaneBytes
+_EndFourPortParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; One-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_OneBartMode	OSLstEntry	mVidParams, _OneBartParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_OneBartParams		DC.L		_EndOneBartParams-_OneBartParams	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,342,512			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		1				; PixelSize is 1 bits
+			DC.W		1				; 1 component
+			DC.W		1				; component size is 1 bit
+			DC.L		0				; defPlaneBytes
+_EndOneBartParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Two-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_TwoBartMode	OSLstEntry	mVidParams, _TwoBartParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_TwoBartParams		DC.L		_EndTwoBartParams-_TwoBartParams	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,342,512			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		2				; PixelSize is 2 bits
+			DC.W		1				; 1 components
+			DC.W		2				; component size is 2 bits
+			DC.L		0				; defPlaneBytes
+_EndTwoBartParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Four-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_FourBartMode	OSLstEntry	mVidParams, _FourBartParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_FourBartParams		DC.L		_EndFourBartParams-_FourBartParams	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,342,512			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		4				; PixelSize is 4 bits
+			DC.W		1				; 1 components in color
+			DC.W		4				; component size is 4 bits
+			DC.L		0				; defPlaneBytes
+_EndFourBartParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Eight-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_EightBartMode	OSLstEntry	mVidParams, _EightBartParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_EightBartParams	DC.L		_EndEightBartParams-_EightBartParams; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,342,512			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		8				; PixelSize is 8 bits
+			DC.W		1				; 1 components in color
+			DC.W		8				; component size is 8 bits
+			DC.L		0				; defPlaneBytes
+_EndEightBartParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; One-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_OneV1kx1kMode	OSLstEntry	mVidParams, _OneV1kx1kParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_OneV1kx1kParams	DC.L		_EndOneV1kx1kVParams-_OneV1kx1kParams	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes/2			; rowbytes
+			DC.W		0,0,1023,1024			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		1				; PixelSize is 1 bits
+			DC.W		1				; 1 component
+			DC.W		1				; component size is 1 bit
+			DC.L		0				; defPlaneBytes
+_EndOneV1kx1kVParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Two-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_TwoV1kx1kMode	OSLstEntry	mVidParams, _TwoV1kx1kParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_TwoV1kx1kParams	DC.L		_EndTwoV1kx1kVParams-_TwoV1kx1kParams	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes/2			; rowbytes
+			DC.W		0,0,1023,1024			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		2				; PixelSize is 2 bits
+			DC.W		1				; 1 components
+			DC.W		2				; component size is 2 bits
+			DC.L		0				; defPlaneBytes
+_EndTwoV1kx1kVParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Four-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_FourV1kx1kMode	OSLstEntry	mVidParams, _FourV1kx1kParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_FourV1kx1kParams	DC.L		_EndFourV1kx1kVParams-_FourV1kx1kParams	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes/2			; rowbytes
+			DC.W		0,0,1023,1024			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		4				; PixelSize is 4 bits
+			DC.W		1				; 1 components in color
+			DC.W		4				; component size is 4 bits
+			DC.L		0				; defPlaneBytes
+_EndFourV1kx1kVParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; One-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_OneV1kx512Mode	OSLstEntry	mVidParams, _OneV1kx512Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_OneV1kx512Params	DC.L		_EndOneV1kx512VParams-_OneV1kx512Params	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,511,1024			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		1				; PixelSize is 1 bits
+			DC.W		1				; 1 component
+			DC.W		1				; component size is 1 bit
+			DC.L		0				; defPlaneBytes
+_EndOneV1kx512VParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Two-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_TwoV1kx512Mode	OSLstEntry	mVidParams, _TwoV1kx512Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_TwoV1kx512Params	DC.L		_EndTwoV1kx512VParams-_TwoV1kx512Params	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,511,1024			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		2				; PixelSize is 2 bits
+			DC.W		1				; 1 components
+			DC.W		2				; component size is 2 bits
+			DC.L		0				; defPlaneBytes
+_EndTwoV1kx512VParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Four-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_FourV1kx512Mode	OSLstEntry	mVidParams, _FourV1kx512Params
+			DatLstEntry	mPageCnt, 1
+			DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+			DatLstEntry	endOfList, 0
+
+_FourV1kx512Params	DC.L		_EndFourV1kx512VParams-_FourV1kx512Params	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,511,1024			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		4				; PixelSize is 4 bits
+			DC.W		1				; 1 components in color
+			DC.W		4				; component size is 4 bits
+			DC.L		0				; defPlaneBytes
+_EndFourV1kx512VParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Eight-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_EightV1kx512Mode	OSLstEntry	mVidParams, _EightV1kx512Params
+			DatLstEntry	mPageCnt, 1
+			DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+			DatLstEntry	endOfList, 0
+
+_EightV1kx512Params	DC.L		_EndEightV1kx512VParams-_EightV1kx512Params	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,511,1024			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		8				; PixelSize is 4 bits
+			DC.W		1				; 1 components in color
+			DC.W		8				; component size is 4 bits
+			DC.L		0				; defPlaneBytes
+_EndEightV1kx512VParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb One-bits-per-pixel parameter list   new rez
+; --------------------------------------------------------------------------------------------
+_OneTweMode	OSLstEntry	mVidParams, _OneTweParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_OneTweParams	DC.L		_EndOneTweParams-_OneTweParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,384,512			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		1				; PixelSize is 1 bits
+		DC.W		1				; 1 component
+		DC.W		1				; component size is 1 bit
+		DC.L		0				; defPlaneBytes
+_EndOneTweParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb Two-bits-per-pixel parameter list	new rez
+; --------------------------------------------------------------------------------------------
+_TwoTweMode	OSLstEntry	mVidParams, _TwoTweParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_TwoTweParams	DC.L		_EndTwoTweParams-_TwoTweParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,384,512			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		2				; PixelSize is 2 bits
+		DC.W		1				; 1 components
+		DC.W		2				; component size is 2 bits
+		DC.L		0				; defPlaneBytes
+_EndTwoTweParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb Four-bits-per-pixel parameter list	for the new rez
+; --------------------------------------------------------------------------------------------
+_FourTweMode	OSLstEntry	mVidParams, _FourTweParams
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_FourTweParams	DC.L		_EndFourTweParams-_FourTweParams	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes			; rowbytes
+		DC.W		0,0,384,512			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		4				; PixelSize is 4 bits
+		DC.W		1				; 1 components in color
+		DC.W		4				; component size is 4 bits
+		DC.L		0				; defPlaneBytes
+_EndFourTweParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+; Eight-bits-per-pixel parameter list
+; --------------------------------------------------------------------------------------------
+_EightTweMode	OSLstEntry	mVidParams, _EightTweParams
+			DatLstEntry	mPageCnt, 1
+			DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+			DatLstEntry	endOfList, 0
+
+_EightTweParams	DC.L	_EndEightTweParams-_EightTweParams	; Physical block size
+			DC.L		kMyBaseOffset			; base offset for start of screen memory
+			DC.W		kMyRowBytes			; rowbytes
+			DC.W		0,0,384,512			; bounds (top,left,bottom,right)
+			DC.W		0				; version
+			DC.W		0				; packType (indicates to use default)
+			DC.L		0				; packSize (reserved for future use)
+			DC.W		72,0				; horizontal pixels per inch
+			DC.W		72,0				; vertical pixels per inch
+			DC.W		0				; pixel type is chunky
+			DC.W		8				; PixelSize is 4 bits
+			DC.W		1				; 1 components in color
+			DC.W		8				; component size is 4 bits
+			DC.L		0				; defPlaneBytes
+_EndEightTweParams	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb One-bits-per-pixel parameter list   new rez
+; --------------------------------------------------------------------------------------------
+_One8x6Mode	OSLstEntry	mVidParams, _One8x6Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_One8x6Params	DC.L		_EndOne8x6Params-_One8x6Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,600,800			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		1				; PixelSize is 1 bits
+		DC.W		1				; 1 component
+		DC.W		1				; component size is 1 bit
+		DC.L		0				; defPlaneBytes
+_EndOne8x6Params	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb Two-bits-per-pixel parameter list	new rez
+; --------------------------------------------------------------------------------------------
+_Two8x6Mode	OSLstEntry	mVidParams, _Two8x6Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_Two8x6Params	DC.L		_EndTwo8x6Params-_Two8x6Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,600,800			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		2				; PixelSize is 2 bits
+		DC.W		1				; 1 components
+		DC.W		2				; component size is 2 bits
+		DC.L		0				; defPlaneBytes
+_EndTwo8x6Params	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb Four-bits-per-pixel parameter list	for the new rez
+; --------------------------------------------------------------------------------------------
+_Four8x6Mode	OSLstEntry	mVidParams, _Four8x6Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_Four8x6Params	DC.L		_EndFour8x6Params-_Four8x6Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,600,800			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		4				; PixelSize is 4 bits
+		DC.W		1				; 1 components in color
+		DC.W		4				; component size is 4 bits
+		DC.L		0				; defPlaneBytes
+_EndFour8x6Params	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb One-bits-per-pixel parameter list   new rez
+; --------------------------------------------------------------------------------------------
+_One832x624Mode	OSLstEntry	mVidParams, _One832x624Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_One832x624Params	DC.L	_EndOne832x624Params-_One832x624Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,624,832			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		1				; PixelSize is 1 bits
+		DC.W		1				; 1 component
+		DC.W		1				; component size is 1 bit
+		DC.L		0				; defPlaneBytes
+_EndOne832x624Params	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb Two-bits-per-pixel parameter list	new rez
+; --------------------------------------------------------------------------------------------
+_Two832x624Mode	OSLstEntry	mVidParams, _Two832x624Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_Two832x624Params	DC.L	_EndTwo832x624Params-_Two832x624Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,624,832			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		2				; PixelSize is 2 bits
+		DC.W		1				; 1 components
+		DC.W		2				; component size is 2 bits
+		DC.L		0				; defPlaneBytes
+_EndTwo832x624Params	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb Four-bits-per-pixel parameter list	for the new rez
+; --------------------------------------------------------------------------------------------
+_Four832x624Mode	OSLstEntry	mVidParams, _Four832x624Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_Four832x624Params	DC.L		_EndFour832x624Params-_Four832x624Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,624,832			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		4				; PixelSize is 4 bits
+		DC.W		1				; 1 components in color
+		DC.W		4				; component size is 4 bits
+		DC.L		0				; defPlaneBytes
+_EndFour832x624Params	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb NOTE 32 One-bits-per-pixel parameter list   new rez
+; --------------------------------------------------------------------------------------------
+_One1x7Mode	OSLstEntry	mVidParams, _One1x7Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_One1x7Params	DC.L		_EndOne1x7Params-_One1x7Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,768,1024			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		1				; PixelSize is 1 bits
+		DC.W		1				; 1 component
+		DC.W		1				; component size is 1 bit
+		DC.L		0				; defPlaneBytes
+_EndOne1x7Params	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb Two-bits-per-pixel parameter list	new rez
+; --------------------------------------------------------------------------------------------
+_Two1x7Mode	OSLstEntry	mVidParams, _Two1x7Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_Two1x7Params	DC.L		_EndTwo1x7Params-_Two1x7Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,768,1024			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		2				; PixelSize is 2 bits
+		DC.W		1				; 1 components
+		DC.W		2				; component size is 2 bits
+		DC.L		0				; defPlaneBytes
+_EndTwo1x7Params	EQU		*
+
+; --------------------------------------------------------------------------------------------
+;rb Four-bits-per-pixel parameter list	for the new rez
+; --------------------------------------------------------------------------------------------
+_Four1x7Mode	OSLstEntry	mVidParams, _Four1x7Params
+		DatLstEntry	mPageCnt, 1
+		DatLstEntry	mDevType, 0			; 0 is CLUT Type device
+		DatLstEntry	endOfList, 0
+
+_Four1x7Params	DC.L		_EndFour1x7Params-_Four1x7Params	; Physical block size
+		DC.L		kMyBaseOffset			; base offset for start of screen memory
+		DC.W		kMyRowBytes/2			; rowbytes
+		DC.W		0,0,768,1024			; bounds (top,left,bottom,right)
+		DC.W		0				; version
+		DC.W		0				; packType (indicates to use default)
+		DC.L		0				; packSize (reserved for future use)
+		DC.W		72,0				; horizontal pixels per inch
+		DC.W		72,0				; vertical pixels per inch
+		DC.W		0				; pixel type is chunky
+		DC.W		4				; PixelSize is 4 bits
+		DC.W		1				; 1 components in color
+		DC.W		4				; component size is 4 bits
+		DC.L		0				; defPlaneBytes
+_EndFour1x7Params	EQU		*
+
+
+		
+; --------------------------------------------------------------------------------------------
+; Fill memory from here to Header Block at end of ROM with $FF
+; --------------------------------------------------------------------------------------------
+		DCB.B		(kROMSize-191)-(*-VideoDeclROM), $FF
+
+; --------------------------------------------------------------------------------------------
+; FORMAT/HEADER BLOCK
+; --------------------------------------------------------------------------------------------
+		ORG	kROMSize - 208;	fhBlock.fhBlockSize
+;------------------------------------------------------------------
+;rb NOTE 26  Resolution Table
+;------------------------------------------------------------------
+
+		STRING PASCAL
+		DC.B	'Apple 12inch  ',0			;rb NOTE 36
+		DC.B	134
+		DC.B	'Apple 16inch  ',0			;rb each string must be 14 char
+		DC.B	138
+		DC.B	'Apple Portrait',0
+		DC.B	130
+		DC.B	'640x480       ',0
+		DC.B	128
+		DC.B	'640x480 (VGA) ',0
+		DC.B	129
+		DC.B	'800x600 (56Hz)',0
+		DC.B	135
+		DC.B	'800x600 (60Hz)',0
+		DC.B	136
+		DC.B	'800x600 (72Hz)',0
+		DC.B	137
+		DC.B	'832x624       ',0
+		DC.B	138
+		DC.B	'1024x768      ',0
+		DC.B	139
+		DC.B	'Internal      ',0
+		DC.B	131
+		DC.B	11				;rb this is how many there is
+		STRING C
+
+		DC.L	(_sRsrcDir-*) ** $00FFFFFF
+; Ordinarily, the ROMSize is the same as the CodeSize.  If the code can go in the
+;	8K or 32K ROM, though, they are different in the 32K ROM.
+		DC.L	kCodeSize		;rb to reflect NOTE 8 (369Includes)
+		DC.L	0			; CRC patched by crcPatch, an MPW tool
+		DC.B	kMyROMVersion		; ROM Revision Level (1..9)
+		DC.B	appleFormat		; ROMEqu
+		DC.L	testPattern		; ROMEqu
+		DC.B	0			; Reserved
+
+;		DC.B	$E1			; Bytelane 0 (C&D 8-6)	THIS IS FOR THE NUBUS SURRAGATE	TECHNIQUE
+		DC.B	$B4			; Bytelane 2 (C&D 8-6)	THIS IS REAL
+
+
+		ENDP
+		END
