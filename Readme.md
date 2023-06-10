@@ -32,10 +32,10 @@ $7FF7  $98
 # Files in this repo
 
 ## C30HR ROM/
-Code from C30HR ROM.sit - does not include build utilities or files with resource fork. For reference only.
+Code from C30HR ROM.sit for viewing only. Does not include build utilities, files with resource fork, and line endings have been changed to Windows.
 
 ## C30HR ROM.sit
-copy of all source, includes, and binaries required to build a ROM
+Stuffit 5.5 copy of all source, includes, and binaries required to build a ROM
 MPW 3.1 under System 6 required! Otherwise, the support tools to patch crc and extract resource do not work.
 
 ## Color30HR Drvr.bin
@@ -44,10 +44,10 @@ This file would have been the built result of the "theDriver.a", which was not i
 
 ## MPW HD.zip
 Zip file containing a HFS image with the following:
-* Copy of code*
-* System 6.0.7*
-* MPW 3.1*
-* Utilities (Resedit, Hexedit, stuffit, etc)*
+* Copy of code
+* System 6.0.7
+* MPW 3.1
+* Utilities (Resedit, Hexedit, stuffit, etc)
 
 ## Micron Source dump.sit
 Original source dump. Contains ROM images, partial source, and driver files.
