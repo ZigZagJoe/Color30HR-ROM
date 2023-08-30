@@ -34,9 +34,19 @@ $7FF7  $98
 ## C30HR ROM/
 Code from C30HR ROM.sit for viewing only. Does not include build utilities, files with resource fork, and line endings have been changed to Windows.
 
+## C30HR ROM - Maverick Support/
+Code from C30HR ROM MPW3.2 Mav.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
+
 ## C30HR ROM.sit
 Stuffit 5.5 copy of all source, includes, and binaries required to build a ROM
-MPW 3.1 under System 6 required! Otherwise, the support tools to patch crc and extract resource do not work.
+MPW 3.1 under System 6 required! Otherwise, the support tools to patch crc and extract resource do not work. 24 bit mode is required.
+
+## C30HR ROM MPW3.2 Mav.sit
+Stuffit 5.5 source that supports building for maverick or gambler ASIC. Includes source for build tools.
+MPW 3.2 under system 7 or newer required.
+
+## MPW 3.3.sit
+MPW 3.3 with some 3.2 components, C and ASM support. 
 
 ## Color30HR Drvr.bin
 binary driver resource used to generate theDriverBin.a
