@@ -1,0 +1,21 @@
+#  Builds 369Color.ROM
+# Highlight the below lines and click the MPW Shell button
+# Because MPW is weird!!
+
+# changes for MPW 3.2 support:
+# remove link option -ss 64400
+# add link options -rt decl to comply with new tool behavior...
+# must use bundled tools 
+
+# assemble
+Asm  369Color.a -i "{AIncludes}"
+
+# link
+link 369Color.a.o -rt decl -o 369Color.crc
+
+# calculate and insert correct CRC
+crcPatch 369Color.crc
+
+# extract code 1 rsrc to file (skips first 4 bytes of code 1)
+Data 369Color.crc 369Color.ROM
+
