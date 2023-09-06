@@ -14,7 +14,7 @@ Code from C30HR ROM v2.0 original.sit for viewing only. Does not include build u
 Code from C30HR ROM v2.0 Maverick.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
 Includes ROM files for both GAM and MAV chips.
 
-## C30HR ROM v2.0 (aux)/
+## C30HR ROM v2.1 (aux)/
 Code from C30HR ROM v2.0 AUX.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
 Includes ROM files for both GAM and MAV chips.
 
