@@ -8,7 +8,7 @@ I strongly recommend referencing https://archive.org/details/MicronXCeedTechDocs
 # Files in this repo
 
 ## C30HR ROM v2.0 (original)/
-Code from C30HR ROM v2.0 original.sit for viewing only. Does not include build utilities, files with resource fork, and line endings have been changed to Windows.
+Code from C30HR ROM v2.0 original.sit for viewing only. Does not include build utilities, files with resource fork, and line endings have been changed to Windows. Only suitable for Ref F cards with GAM chips.
 
 ## C30HR ROM v2.0 (maverick)/
 Code from C30HR ROM v2.0 Maverick.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
@@ -18,7 +18,7 @@ Includes ROM files for both GAM and MAV chips.
 Code from C30HR ROM v2.0 AUX.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
 Includes ROM files for both GAM and MAV chips.
 
-** This ROM supports booting A/UX with a grayscale setup, without an external monitor attached. Note, it is B&W only. **
+** This ROM supports booting A/UX with a grayscale setup, without an external monitor attached. Note, it is B&W only while in A/UX. External monitor will work normally, if attached. **
 
 ## C30HR ROM v2.0 Original.sit
 Stuffit 5.5 copy of all source, includes, and binaries required to build a ROM
@@ -54,8 +54,7 @@ Original source dump. Contains ROM images, partial source, and driver files.
 ## Micron Color 30 Tech Docs.pdf
 A copy of https://archive.org/details/MicronXCeedTechDocs which contains vital information regarding hardware design and register usage.
 
-
-# Notes on genesis of code in this repo #
+# Notes on genesis of code in this repo 
 
 **Two changes have been made to original micron code:**
 
