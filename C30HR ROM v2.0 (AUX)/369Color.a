@@ -126,7 +126,7 @@
 
 		MACRO
 &lbl		MyBoard
-&lbl		DC.L		'XCEED Color 30HR� V2.1', 0
+&lbl		DC.L		'XCEED Color 30HR� V2.0', 0
 		ENDM
 
 		PRINT		ON

@@ -14,7 +14,7 @@ Code from C30HR ROM v2.0 original.sit for viewing only. Does not include build u
 Code from C30HR ROM v2.0 Maverick.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
 Includes ROM files for both GAM and MAV chips.
 
-## C30HR ROM v2.1 (aux)/
+## C30HR ROM v2.0 (aux)/
 Code from C30HR ROM v2.0 AUX.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
 Includes ROM files for both GAM and MAV chips.
 
@@ -28,7 +28,7 @@ MPW 3.1 under System 6 required! Otherwise, the support tools to patch crc and e
 Stuffit 5.5 source that supports building for maverick or gambler ASIC. Includes source for build tools.
 MPW 3.2 under system 7 or newer required.
 
-## C30HR ROM v2.1 aux.sit
+## C30HR ROM v2.0 aux.sit
 Stuffit 5.5 source that supports building for maverick or gambler ASIC. Includes source for build tools.
 ** This ROM supports booting A/UX with a grayscale setup, without an external monitor attached. Note, it is B&W only. **
 
