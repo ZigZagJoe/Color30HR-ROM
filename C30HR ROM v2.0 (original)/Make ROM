@@ -1,0 +1,19 @@
+#  Builds 369Color.ROM
+# Highlight the below lines and click the MPW Shell button
+# Because MPW is weird!!
+
+# assemble
+Asm  369Color.a
+
+# link
+link 369Color.a.o -ss 64400 -o 369Color.crc
+
+# calculate and insert correct CRC
+crcPatch 369Color.crc
+
+# extract code 1 rsrc to file (skips first 4 bytes of code 1)
+Data 369Color.crc 369Color.ROM
+
+
+
+
