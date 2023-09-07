@@ -5,20 +5,33 @@ Additional versions are provided to allow building versions with support for old
 
 I strongly recommend referencing https://archive.org/details/MicronXCeedTechDocs for details of the hardware design and register usage.
 
+# ROM versions in this repo
+These are located in the ROMs subdirectory. These ROMs are suitable for use with Revision F cards. A 26c256 EPROM or W27W257 EEPROM is required to write to.
+
+| Version | Filename | MD5 | ASIC | Notes
+| --- | --- | --- | --- | --- |
+| C30HR ROM v2.0 (original) | 369Color.ROM | 104E6F0C4DFD34846963C96C4F54DC79 | GAM | Original Micron Color 30HR ROM for Gambler ASIC |
+| C30HR ROM v2.0 (maverick) | 369Color.MAV.ROM | 12F967BE905B61C19012EFEB7F668877 | MAV | Color30HR for Maverick ASIC |
+| C30HR ROM v2.0 (maverick) | 369Color.GAM.ROM | 104E6F0C4DFD34846963C96C4F54DC79 | GAM | Color30HR for Gambler ASIC (identical to original) |
+| C30HR ROM v2.0 (AUX) | 369Color.AUX.GAM.ROM | ABE57BBD4BC8945193925A81B19E9AB5 | GAM | Color30HR for Gambler with A/UX Grayscale fix |
+| C30HR ROM v2.0 (AUX) | 369Color.AUX.MAV.ROM | B88B3F3114F18CC21746F20661B95B22 | MAV | Color30HR for Maverick with A/UX Grayscale fix |
+
 # Files in this repo
 
 ## C30HR ROM v2.0 (original)/
 Code from C30HR ROM v2.0 original.sit for viewing only. Does not include build utilities, files with resource fork, and line endings have been changed to Windows. Only suitable for Ref F cards with GAM chips.
 
 ## C30HR ROM v2.0 (maverick)/
-Code from C30HR ROM v2.0 Maverick.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
+Code from C30HR ROM v2.0 Maverick.sit for viewing only. Includes build utilities source. Does not include files with resource fork only, and line endings have been changed to Windows.
+
 Includes ROM files for both GAM and MAV chips.
 
 ## C30HR ROM v2.0 (aux)/
-Code from C30HR ROM v2.0 AUX.sit for viewing only. Includes build utilities source. Does include not files with resource fork only, and line endings have been changed to Windows.
+Code from C30HR ROM v2.0 AUX.sit for viewing only. Includes build utilities source. Does not include files with resource fork only, and line endings have been changed to Windows.
+
 Includes ROM files for both GAM and MAV chips.
 
-** This ROM supports booting A/UX with a grayscale setup, without an external monitor attached. Note, it is B&W only while in A/UX. External monitor will work normally, if attached. **
+** This ROM supports booting A/UX with a grayscale setup, without an external monitor attached. Note, it is B&W only while in A/UX. An external monitor will work normally in color, if attached. No changes to Mac OS behavior. **
 
 ## C30HR ROM v2.0 Original.sit
 Stuffit 5.5 copy of all source, includes, and binaries required to build a ROM
@@ -28,7 +41,7 @@ MPW 3.1 under System 6 required! Otherwise, the support tools to patch crc and e
 Stuffit 5.5 source that supports building for maverick or gambler ASIC. Includes source for build tools.
 MPW 3.2 under system 7 or newer required.
 
-## C30HR ROM v2.0 aux.sit
+## C30HR ROM v2.0 Aux.sit
 Stuffit 5.5 source that supports building for maverick or gambler ASIC. Includes source for build tools.
 ** This ROM supports booting A/UX with a grayscale setup, without an external monitor attached. Note, it is B&W only. **
 
