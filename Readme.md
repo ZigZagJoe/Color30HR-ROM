@@ -12,7 +12,7 @@ These are located in the ROMs subdirectory. These ROMs are suitable for use with
 | --- | --- | --- | --- | --- |
 | C30HR ROM v2.0 (original) | 369Color.ROM | 104E6F0C4DFD34846963C96C4F54DC79 | GAM | Original Micron Color 30HR ROM for Gambler ASIC |
 | C30HR ROM v2.0 (maverick) | 369Color.MAV.ROM | 12F967BE905B61C19012EFEB7F668877 | MAV | Color30HR for Maverick ASIC |
-| C30HR ROM v2.0 (maverick) | 369Color.GAM.ROM | 104E6F0C4DFD34846963C96C4F54DC79 | GAM | Color30HR for Gambler ASIC (identical to original) |
+| C30HR ROM v2.0 (gambler) | 369Color.GAM.ROM | 104E6F0C4DFD34846963C96C4F54DC79 | GAM | Color30HR for Gambler ASIC (identical to original) |
 | C30HR ROM v2.0 (AUX) | 369Color.AUX.GAM.ROM | ABE57BBD4BC8945193925A81B19E9AB5 | GAM | Color30HR for Gambler with A/UX Grayscale fix |
 | C30HR ROM v2.0 (AUX) | 369Color.AUX.MAV.ROM | B88B3F3114F18CC21746F20661B95B22 | MAV | Color30HR for Maverick with A/UX Grayscale fix |
 
